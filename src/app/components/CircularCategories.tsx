@@ -1,36 +1,50 @@
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
-const categories = [
-  { name: 'Fashion', image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=150&h=150&fit=crop' },
-  { name: 'Electronics', image: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=150&h=150&fit=crop' },
-  { name: 'Home', image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=150&h=150&fit=crop' },
-  { name: 'Beauty', image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=150&h=150&fit=crop' },
-  { name: 'Toys', image: 'https://images.unsplash.com/photo-1558060370-d644479cb6f7?w=150&h=150&fit=crop' },
-  { name: 'Sports', image: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=150&h=150&fit=crop' },
-  { name: 'Books', image: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?w=150&h=150&fit=crop' },
-  { name: 'Grocery', image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=150&h=150&fit=crop' },
-];
+interface CircularCategoriesProps {
+  categories: Array<{
+    key: string;
+    name: string;
+    badge: string;
+    image: string;
+  }>;
+  onSelect: (categoryKey: string) => void;
+}
 
-export function CircularCategories() {
+export function CircularCategories({ categories, onSelect }: CircularCategoriesProps) {
   return (
-    <div className="bg-white py-6 max-w-[1400px] mx-auto">
+    <section className="mx-auto max-w-[1400px] bg-white py-6">
       <div className="px-4">
-        <h3 className="mb-4">Shop by Category</h3>
-        <div className="flex overflow-x-auto gap-6 pb-2 scrollbar-hide">
-          {categories.map((cat, idx) => (
-            <button key={idx} className="flex flex-col items-center gap-2 min-w-[80px] group">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-border group-hover:border-primary transition-colors">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3>Shop by category</h3>
+            <p className="text-sm text-muted-foreground">
+              Mobile first circular categories with offer badges and quick discovery.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-5 overflow-x-auto pb-2">
+          {categories.map((category) => (
+            <button
+              key={category.key}
+              onClick={() => onSelect(category.key)}
+              className="group min-w-[92px] text-center"
+            >
+              <div className="relative mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full border-2 border-border transition group-hover:border-primary">
                 <ImageWithFallback
-                  src={cat.image}
-                  alt={cat.name}
-                  className="w-full h-full object-cover"
+                  src={category.image}
+                  alt={category.name}
+                  className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                 />
+                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/75 px-2 py-0.5 text-[10px] text-white">
+                  {category.badge}
+                </div>
               </div>
-              <span className="text-sm text-center">{cat.name}</span>
+              <div className="line-clamp-1 text-sm">{category.name}</div>
             </button>
           ))}
         </div>
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,206 +1,295 @@
-import { Heart, Share2, Star, Check, Truck, RotateCcw, Shield, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Heart,
+  PlayCircle,
+  Share2,
+  ShieldCheck,
+  Star,
+  Truck,
+  RotateCcw,
+  WalletCards,
+  ZoomIn,
+} from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Progress } from './ui/progress';
-import { useState } from 'react';
+import type { LocationInfo, Product } from '../types';
 
 interface ProductDetailProps {
-  product: any;
+  product: Product | null;
+  location: LocationInfo;
   onClose: () => void;
-  onAddToCart: () => void;
-  onBuyNow: () => void;
+  onAddToCart: (product: Product) => void;
+  onBuyNow: (product: Product) => void;
 }
 
-export function ProductDetail({ product, onClose, onAddToCart, onBuyNow }: ProductDetailProps) {
+export function ProductDetail({
+  product,
+  location,
+  onClose,
+  onAddToCart,
+  onBuyNow,
+}: ProductDetailProps) {
   const [selectedImage, setSelectedImage] = useState(0);
-  const [selectedSize, setSelectedSize] = useState('M');
+  const [selectedColor, setSelectedColor] = useState(0);
 
-  const images = [
-    product.image,
-    product.image,
-    product.image,
-  ];
+  const images = useMemo(() => product?.images || [], [product]);
 
-  const sizes = ['S', 'M', 'L', 'XL'];
+  if (!product) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="sticky top-0 z-10 bg-white border-b border-border px-4 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <ChevronLeft className="w-5 h-5" />
-        </Button>
-        <div className="flex-1" />
-        <Button variant="ghost" size="icon">
-          <Share2 className="w-5 h-5" />
-        </Button>
-        <Button variant="ghost" size="icon">
-          <Heart className="w-5 h-5" />
-        </Button>
+      <div className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">{product.brand}</div>
+            <div className="line-clamp-1 text-xs text-muted-foreground">{product.name}</div>
+          </div>
+          <Button variant="ghost" size="icon">
+            <Share2 className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon">
+            <Heart className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
 
-      <div className="max-w-6xl mx-auto lg:flex lg:gap-8 lg:p-8">
-        <div className="lg:w-1/2">
-          <div className="relative aspect-square bg-muted">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-6 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="space-y-4">
+          <div className="relative aspect-square overflow-hidden rounded-[28px] bg-muted">
             <ImageWithFallback
               src={images[selectedImage]}
               alt={product.name}
-              className="w-full h-full object-cover"
+              className="h-full w-full object-cover"
             />
-            {product.discount > 0 && (
-              <Badge className="absolute top-4 left-4 bg-accent text-white">
-                {product.discount}% OFF
-              </Badge>
-            )}
+            <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+              <Badge className="rounded-full bg-accent text-white">{product.discount}% OFF</Badge>
+              {product.badge ? <Badge className="rounded-full bg-primary text-white">{product.badge}</Badge> : null}
+            </div>
+            <div className="absolute right-4 top-4 flex gap-2">
+              <button className="rounded-full bg-white/90 p-2 text-slate-700 shadow">
+                <ZoomIn className="h-4 w-4" />
+              </button>
+              {product.videoLabel ? (
+                <button className="rounded-full bg-white/90 p-2 text-slate-700 shadow">
+                  <PlayCircle className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <div className="absolute bottom-4 right-4 rounded-full bg-slate-950/80 px-3 py-1 text-xs text-white">
+              {selectedImage + 1}/{images.length}
+            </div>
           </div>
 
-          <div className="flex gap-2 p-4 overflow-x-auto">
-            {images.map((img, idx) => (
+          <div className="flex gap-3 overflow-x-auto">
+            {images.map((image, index) => (
               <button
-                key={idx}
-                onClick={() => setSelectedImage(idx)}
-                className={`w-20 h-20 shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
-                  selectedImage === idx ? 'border-primary' : 'border-border'
+                key={image}
+                onClick={() => setSelectedImage(index)}
+                className={`relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border-2 ${
+                  selectedImage === index ? 'border-primary' : 'border-border'
                 }`}
               >
-                <ImageWithFallback src={img} alt="" className="w-full h-full object-cover" />
+                <ImageWithFallback src={image} alt="" className="h-full w-full object-cover" />
+                {index === 0 && product.videoLabel ? (
+                  <div className="absolute bottom-2 left-2 rounded-full bg-slate-950/80 px-2 py-0.5 text-[10px] text-white">
+                    Video
+                  </div>
+                ) : null}
               </button>
             ))}
           </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-[24px] bg-secondary/70 p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2 font-medium text-primary">
+                <Truck className="h-4 w-4" />
+                Delivery
+              </div>
+              <div>{product.deliveryTime || 'Same day'} delivery in {location.area}</div>
+            </div>
+            <div className="rounded-[24px] bg-secondary/70 p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2 font-medium text-primary">
+                <RotateCcw className="h-4 w-4" />
+                Returns
+              </div>
+              <div>Easy returns within 7 days for eligible products.</div>
+            </div>
+            <div className="rounded-[24px] bg-secondary/70 p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2 font-medium text-primary">
+                <WalletCards className="h-4 w-4" />
+                Payment
+              </div>
+              <div>Secure payment with UPI, cards and wallet support.</div>
+            </div>
+          </div>
         </div>
 
-        <div className="lg:w-1/2 p-4 space-y-6">
-          <div>
-            {product.creator && (
-              <div className="text-sm text-primary mb-2">Recommended by {product.creator}</div>
-            )}
-            <h1 className="text-2xl mb-2">{product.name}</h1>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1 bg-success text-white px-2 py-1 rounded">
-                <span>{product.rating}</span>
-                <Star className="w-4 h-4 fill-current" />
-              </div>
-              <span className="text-sm text-muted-foreground">{product.reviews} reviews</span>
-              {product.localSeller && (
-                <Badge variant="secondary" className="gap-1">
-                  Local Seller
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {product.socialProof.map((proof) => (
+                <Badge key={proof} variant="secondary" className="rounded-full px-3 py-1">
+                  {proof}
                 </Badge>
-              )}
+              ))}
+            </div>
+
+            <div>
+              <div className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {product.brand}
+              </div>
+              <h1 className="mt-1 text-3xl">{product.name}</h1>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <div className="flex items-center gap-1 rounded-full bg-[#03a685] px-2 py-1 text-white">
+                {product.rating.toFixed(1)}
+                <Star className="h-4 w-4 fill-current" />
+              </div>
+              <span className="text-muted-foreground">{product.reviews.toLocaleString()} reviews</span>
+              {product.trusted ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                  <ShieldCheck className="h-4 w-4" />
+                  Trusted seller
+                </span>
+              ) : null}
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl">₹{product.price.toLocaleString()}</span>
-              <span className="text-xl text-muted-foreground line-through">₹{product.mrp.toLocaleString()}</span>
-              <span className="text-lg text-success">{product.discount}% off</span>
+          <div className="rounded-[28px] border border-border p-5">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <span className="text-4xl font-semibold">Rs {product.price.toLocaleString()}</span>
+              <span className="text-xl text-muted-foreground line-through">
+                Rs {product.mrp.toLocaleString()}
+              </span>
+              <span className="text-lg font-medium text-success">{product.discount}% OFF</span>
             </div>
-            <div className="text-sm text-muted-foreground">Inclusive of all taxes</div>
-          </div>
-
-          <div className="flex gap-3 p-4 bg-secondary/50 rounded-lg">
-            <div className="flex items-center gap-2 flex-1">
-              <Truck className="w-5 h-5 text-primary shrink-0" />
-              <span className="text-sm">Free Delivery</span>
-            </div>
-            <div className="flex items-center gap-2 flex-1">
-              <RotateCcw className="w-5 h-5 text-primary shrink-0" />
-              <span className="text-sm">7 Day Returns</span>
-            </div>
-            <div className="flex items-center gap-2 flex-1">
-              <Shield className="w-5 h-5 text-primary shrink-0" />
-              <span className="text-sm">Secure Payment</span>
-            </div>
+            <div className="mt-2 text-sm text-muted-foreground">Inclusive of all taxes</div>
+            {product.upiOffer ? <div className="mt-3 text-sm text-success">{product.upiOffer}</div> : null}
+            {product.affiliateRate ? (
+              <div className="mt-3 rounded-2xl bg-secondary/70 px-4 py-3 text-sm text-primary">
+                {product.affiliateRate}
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-3">
-            <h4>Select Size</h4>
-            <div className="flex gap-2">
-              {sizes.map((size) => (
+            <div className="flex items-center justify-between">
+              <h4>Available colors</h4>
+              <div className="text-sm text-muted-foreground">{product.colors[selectedColor]?.name}</div>
+            </div>
+            <div className="flex gap-3 overflow-x-auto">
+              {product.colors.map((color, index) => (
                 <button
-                  key={size}
-                  onClick={() => setSelectedSize(size)}
-                  className={`w-12 h-12 rounded-lg border-2 transition-colors ${
-                    selectedSize === size
-                      ? 'border-primary bg-primary text-white'
-                      : 'border-border hover:border-primary'
+                  key={color.name}
+                  onClick={() => setSelectedColor(index)}
+                  className={`min-w-[88px] rounded-2xl border px-3 py-3 text-left transition ${
+                    selectedColor === index ? 'border-primary bg-secondary/70' : 'border-border'
                   }`}
                 >
-                  {size}
+                  <div
+                    className="mb-2 h-9 w-9 rounded-full border border-border"
+                    style={{ backgroundColor: color.swatch }}
+                  />
+                  <div className="text-xs font-medium">{color.name}</div>
                 </button>
               ))}
             </div>
           </div>
 
-          {product.stockLeft && product.stockLeft < 10 && (
-            <div className="p-4 bg-destructive/10 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-destructive">Hurry! Only {product.stockLeft} left</span>
-                <span className="text-sm text-muted-foreground">74% sold</span>
-              </div>
-              <Progress value={74} className="h-2" />
+          <div className="rounded-[28px] bg-gradient-to-br from-primary/10 to-accent/10 p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h4>Urgency and social proof</h4>
+              <Badge className="rounded-full bg-destructive text-white">Selling fast</Badge>
             </div>
-          )}
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl bg-white p-4 text-sm">{product.viewersToday} people viewed today</div>
+              <div className="rounded-2xl bg-white p-4 text-sm">{product.stockLeft} left in stock</div>
+              <div className="rounded-2xl bg-white p-4 text-sm">{product.peopleViewing} viewing now</div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button onClick={onAddToCart} variant="outline" size="lg" className="gap-2">
-              Add to Cart
+            <Button variant="outline" size="lg" className="rounded-full" onClick={() => onAddToCart(product)}>
+              Add to cart
             </Button>
-            <Button onClick={onBuyNow} size="lg" className="gap-2">
-              Buy Now
+            <Button size="lg" className="rounded-full" onClick={() => onBuyNow(product)}>
+              Buy now
             </Button>
           </div>
 
-          <div className="space-y-3 pt-6 border-t border-border">
-            <h4>Product Highlights</h4>
-            <ul className="space-y-2">
-              {[
-                'Premium quality fabric',
-                'Comfortable fit',
-                'Machine washable',
-                'Available in multiple colors',
-                'Trusted brand',
-              ].map((highlight, idx) => (
-                <li key={idx} className="flex items-start gap-2 text-sm">
-                  <Check className="w-4 h-4 text-success shrink-0 mt-0.5" />
-                  <span>{highlight}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="space-y-3 pt-6 border-t border-border">
-            <h4>Customer Reviews ({product.reviews})</h4>
-            <div className="space-y-3">
-              {[
-                { name: 'Rahul S.', rating: 5, text: 'Excellent quality! Worth every penny.', verified: true },
-                { name: 'Priya K.', rating: 4, text: 'Good product, fast delivery.', verified: true },
-              ].map((review, idx) => (
-                <div key={idx} className="p-4 bg-muted/50 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center text-sm">
-                        {review.name[0]}
-                      </div>
-                      <div>
-                        <div className="text-sm">{review.name}</div>
-                        {review.verified && (
-                          <div className="flex items-center gap-1 text-xs text-success">
-                            <Check className="w-3 h-3" />
-                            Verified Purchase
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm">
-                      <span>{review.rating}</span>
-                      <Star className="w-4 h-4 fill-success text-success" />
-                    </div>
+          <div className="space-y-3 rounded-[28px] border border-border p-5">
+            <h4>Key highlights</h4>
+            <div className="grid gap-3 md:grid-cols-2">
+              {product.highlights.map((highlight) => (
+                <div key={highlight.label} className="rounded-2xl bg-muted/50 p-4">
+                  <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                    {highlight.label}
                   </div>
-                  <p className="text-sm">{review.text}</p>
+                  <div className="mt-1 text-sm">{highlight.value}</div>
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-4 rounded-[28px] border border-border p-5">
+            <div className="flex items-center justify-between">
+              <h4>Styled by creators</h4>
+              <button className="inline-flex items-center gap-1 text-sm font-medium text-primary">
+                See how people styled this
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {product.styledBy.map((creator) => (
+                <div key={creator.name} className="flex gap-3 rounded-2xl bg-muted/40 p-3">
+                  <ImageWithFallback
+                    src={creator.image}
+                    alt={creator.name}
+                    className="h-14 w-14 rounded-2xl object-cover"
+                  />
+                  <div>
+                    <div className="font-medium">{creator.name}</div>
+                    <div className="text-sm text-muted-foreground">{creator.look}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-[28px] border border-border p-5">
+            <h4>Customer reviews</h4>
+            {[
+              {
+                name: 'Ritika',
+                rating: 5,
+                text: 'Great fit, fast delivery and the creator styling tips were actually useful.',
+              },
+              {
+                name: 'Mohit',
+                rating: 4,
+                text: 'Product matches the listing and checkout rewards made the purchase better.',
+              },
+            ].map((review) => (
+              <div key={review.name} className="rounded-2xl bg-muted/40 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="font-medium">{review.name}</div>
+                  <div className="flex items-center gap-1 text-sm">
+                    {review.rating}
+                    <Star className="h-4 w-4 fill-current text-success" />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{review.text}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

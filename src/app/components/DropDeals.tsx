@@ -1,98 +1,111 @@
-import { useState, useEffect } from 'react';
-import { Clock, Eye, Package } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Clock3, Eye, Flame, Package } from 'lucide-react';
 import { ProductCard } from './ProductCard';
 import { Badge } from './ui/badge';
-
-interface DropDeal {
-  id: string;
-  name: string;
-  image: string;
-  price: number;
-  mrp: number;
-  discount: number;
-  rating: number;
-  reviews: number;
-  endsAt: Date;
-  stockLeft: number;
-  viewing: number;
-}
+import type { DropDeal } from '../types';
 
 interface DropDealsProps {
   deals: DropDeal[];
-  onProductClick: (product: any) => void;
+  onProductClick: (product: DropDeal) => void;
+  onViewAll: () => void;
 }
 
-function CountdownTimer({ endsAt }: { endsAt: Date }) {
-  const [timeLeft, setTimeLeft] = useState('');
+function useCountdown(targetDate: Date) {
+  const [value, setValue] = useState('');
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      const now = new Date().getTime();
-      const end = endsAt.getTime();
-      const distance = end - now;
+    const timer = window.setInterval(() => {
+      const diff = targetDate.getTime() - Date.now();
 
-      if (distance < 0) {
-        setTimeLeft('EXPIRED');
-        clearInterval(timer);
+      if (diff <= 0) {
+        setValue('00:00:00');
+        window.clearInterval(timer);
         return;
       }
 
-      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-
-      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+      const hours = String(Math.floor(diff / (1000 * 60 * 60))).padStart(2, '0');
+      const minutes = String(Math.floor((diff / (1000 * 60)) % 60)).padStart(2, '0');
+      const seconds = String(Math.floor((diff / 1000) % 60)).padStart(2, '0');
+      setValue(`${hours}:${minutes}:${seconds}`);
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [endsAt]);
+    return () => window.clearInterval(timer);
+  }, [targetDate]);
+
+  return value;
+}
+
+function CountdownPill({ targetDate }: { targetDate: Date }) {
+  const countdown = useCountdown(targetDate);
 
   return (
-    <div className="flex items-center gap-1.5 bg-destructive text-white px-3 py-1.5 rounded-full text-sm">
-      <Clock className="w-4 h-4" />
-      <span>{timeLeft}</span>
+    <div className="inline-flex items-center gap-1 rounded-full bg-slate-950 px-3 py-1 text-xs text-white">
+      <Clock3 className="h-3.5 w-3.5" />
+      {countdown}
     </div>
   );
 }
 
-export function DropDeals({ deals, onProductClick }: DropDealsProps) {
-  const nextDrop = new Date();
-  nextDrop.setHours(nextDrop.getHours() + 6);
+export function DropDeals({ deals, onProductClick, onViewAll }: DropDealsProps) {
+  const nextDropDate = useMemo(() => new Date(Date.now() + 6 * 60 * 60 * 1000), []);
 
   return (
-    <section className="bg-gradient-to-br from-purple-50 to-pink-50 py-8 max-w-[1400px] mx-auto">
+    <section className="mx-auto max-w-[1400px] bg-gradient-to-br from-indigo-50 via-fuchsia-50 to-rose-50 py-8">
       <div className="px-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl mb-2">⚡ Drop Deals</h2>
-            <p className="text-sm text-muted-foreground">Limited time offers - grab them before they're gone!</p>
-          </div>
-          <div className="flex flex-col items-start md:items-end gap-2">
-            <div className="text-sm text-muted-foreground">Next drop in:</div>
-            <CountdownTimer endsAt={nextDrop} />
+        <div className="mb-6 rounded-[28px] bg-slate-950 p-5 text-white">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs">
+                <Flame className="h-3.5 w-3.5" />
+                Limited time drops. Gone when sold out.
+              </div>
+              <h2 className="text-2xl">Drop deals</h2>
+              <p className="mt-2 max-w-2xl text-sm text-white/75">
+                Each card carries its own countdown, stock pressure and live viewer count instead of using a single generic flash sale strip.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.18em] text-white/60">Next drop in</div>
+                <div className="mt-1">
+                  <CountdownPill targetDate={nextDropDate} />
+                </div>
+              </div>
+              <button
+                onClick={onViewAll}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm transition hover:bg-white/10"
+              >
+                View all drops
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {deals.map((deal) => (
-            <div key={deal.id} className="relative">
-              <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-10">
-                <CountdownTimer endsAt={deal.endsAt} />
+        <div className="grid gap-4 lg:grid-cols-4">
+          {deals.map((deal, index) => (
+            <div key={deal.id} className={index === 0 ? 'lg:col-span-2' : ''}>
+              <div className="mb-3 flex items-center justify-between">
+                <CountdownPill targetDate={deal.endsAt} />
+                <Badge className="rounded-full bg-white px-3 py-1 text-primary shadow">
+                  Picked by creators
+                </Badge>
               </div>
-
-              <ProductCard
-                product={deal}
-                onClick={() => onProductClick(deal)}
-              />
-
-              <div className="mt-2 flex items-center justify-between text-xs bg-white rounded-lg p-2 border border-border">
-                <div className="flex items-center gap-1 text-destructive">
-                  <Package className="w-3 h-3" />
-                  <span>{deal.stockLeft} left</span>
+              <ProductCard product={deal} onClick={() => onProductClick(deal)} />
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl border border-border bg-white px-4 py-3">
+                  <div className="mb-1 flex items-center gap-2 text-destructive">
+                    <Package className="h-4 w-4" />
+                    Only {deal.stockLeft} left
+                  </div>
+                  <div className="text-xs text-muted-foreground">Low stock creates urgency.</div>
                 </div>
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Eye className="w-3 h-3" />
-                  <span>{deal.viewing} viewing</span>
+                <div className="rounded-2xl border border-border bg-white px-4 py-3">
+                  <div className="mb-1 flex items-center gap-2 text-primary">
+                    <Eye className="h-4 w-4" />
+                    {deal.peopleViewing} viewing now
+                  </div>
+                  <div className="text-xs text-muted-foreground">Demand proof for fast moving products.</div>
                 </div>
               </div>
             </div>

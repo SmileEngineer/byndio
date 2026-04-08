@@ -1,80 +1,81 @@
+import { useState } from 'react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import type { VibeCard } from '../types';
 
-const vibes = [
-  {
-    title: 'Everyday Essentials',
-    subtitle: 'Comfort meets style',
-    image: 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&h=400&fit=crop',
-    gradient: 'from-blue-600/60 to-purple-600/60'
-  },
-  {
-    title: 'Party & Glam',
-    subtitle: 'Stand out tonight',
-    image: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=600&h=400&fit=crop',
-    gradient: 'from-pink-600/60 to-rose-600/60'
-  },
-  {
-    title: 'Creator Picks',
-    subtitle: 'Trending with influencers',
-    image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=600&h=400&fit=crop',
-    gradient: 'from-amber-600/60 to-orange-600/60'
-  },
-  {
-    title: 'Budget Finds',
-    subtitle: 'Style under ₹999',
-    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=600&h=400&fit=crop',
-    gradient: 'from-green-600/60 to-teal-600/60'
-  },
-  {
-    title: 'Festive Ready',
-    subtitle: 'Celebrate in style',
-    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=600&h=400&fit=crop',
-    gradient: 'from-red-600/60 to-pink-600/60'
-  }
+interface ShopYourVibeProps {
+  vibes: VibeCard[];
+  onSelectVibe: (vibe: VibeCard) => void;
+}
+
+const quickFilters = [
+  { key: 'trending', label: 'Trending' },
+  { key: 'under999', label: 'Under Rs 999' },
+  { key: 'new', label: 'New' },
+  { key: 'topRated', label: 'Top rated' },
 ];
 
-export function ShopYourVibe() {
-  return (
-    <section className="bg-white py-8 max-w-[1400px] mx-auto">
-      <div className="px-4">
-        <div className="mb-6">
-          <h2 className="text-2xl mb-2">Shop Your Vibe ✨</h2>
-          <p className="text-sm text-muted-foreground">Discover curated collections that match your lifestyle</p>
-        </div>
+export function ShopYourVibe({ vibes, onSelectVibe }: ShopYourVibeProps) {
+  const [activeFilter, setActiveFilter] = useState('trending');
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="md:col-span-2 lg:col-span-1 lg:row-span-2">
-            <button className="relative w-full h-full min-h-[300px] rounded-xl overflow-hidden group">
-              <ImageWithFallback
-                src={vibes[0].image}
-                alt={vibes[0].title}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              />
-              <div className={`absolute inset-0 bg-gradient-to-br ${vibes[0].gradient}`} />
-              <div className="absolute inset-0 flex flex-col justify-end p-6 text-white">
-                <h3 className="text-2xl mb-1">{vibes[0].title}</h3>
-                <p className="text-sm opacity-90">{vibes[0].subtitle}</p>
-              </div>
-            </button>
+  return (
+    <section className="mx-auto max-w-[1400px] bg-white py-8">
+      <div className="px-4">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-2xl">Shop your vibe</h2>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Not categories. Lifestyle led discovery tiles that match shopping intent, mood and creator context.
+            </p>
           </div>
 
-          {vibes.slice(1).map((vibe, idx) => (
-            <button
-              key={idx}
-              className="relative w-full h-[200px] rounded-xl overflow-hidden group"
-            >
-              <ImageWithFallback
-                src={vibe.image}
-                alt={vibe.title}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              />
-              <div className={`absolute inset-0 bg-gradient-to-br ${vibe.gradient}`} />
-              <div className="absolute inset-0 flex flex-col justify-end p-4 text-white">
-                <h4 className="mb-1">{vibe.title}</h4>
-                <p className="text-xs opacity-90">{vibe.subtitle}</p>
-              </div>
-            </button>
-          ))}
+          <div className="flex gap-2 overflow-x-auto">
+            {quickFilters.map((filter) => (
+              <button
+                key={filter.key}
+                onClick={() => setActiveFilter(filter.key)}
+                className={`whitespace-nowrap rounded-full border px-4 py-2 text-sm transition ${
+                  activeFilter === filter.key
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-white hover:border-primary hover:bg-secondary'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          {vibes.map((vibe, index) => {
+            const isPrimary = index === 0;
+            const highlight = vibe.filterKey === activeFilter;
+
+            return (
+              <button
+                key={vibe.id}
+                onClick={() => onSelectVibe(vibe)}
+                className={`group relative overflow-hidden rounded-[28px] text-left ${
+                  isPrimary ? 'min-h-[360px] lg:row-span-2' : 'min-h-[220px]'
+                } ${highlight ? 'ring-2 ring-primary/70' : ''}`}
+              >
+                <ImageWithFallback
+                  src={vibe.image}
+                  alt={vibe.title}
+                  className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                />
+                <div className={`absolute inset-0 bg-gradient-to-br ${vibe.gradient}`} />
+                <div className="absolute inset-0 flex flex-col justify-between p-5 text-white">
+                  <div className="inline-flex w-fit rounded-full bg-white/15 px-3 py-1 text-xs backdrop-blur">
+                    {highlight ? 'Quick filter match' : vibe.subtitle}
+                  </div>
+                  <div>
+                    <h3 className={isPrimary ? 'text-3xl' : 'text-xl'}>{vibe.title}</h3>
+                    <p className="mt-2 text-sm text-white/90">{vibe.tagline}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>

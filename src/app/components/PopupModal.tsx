@@ -1,8 +1,8 @@
-import { X, Gift, Share2, TrendingUp } from 'lucide-react';
+import { X } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Button } from './ui/button';
-import { motion, AnimatePresence } from 'motion/react';
-
-type PopupType = 'signup' | 'referral' | 'firstPurchase' | 'returning' | 'referralSuccess';
+import { popupContent } from '../mockData';
+import type { PopupType } from '../types';
 
 interface PopupModalProps {
   type: PopupType;
@@ -10,88 +10,51 @@ interface PopupModalProps {
 }
 
 export function PopupModal({ type, onClose }: PopupModalProps) {
-  const content = {
-    signup: {
-      emoji: '🎉',
-      title: 'Welcome to BYNDIO!',
-      subtitle: 'Get ₹100 off on your first order',
-      description: 'Use code: FIRST100 at checkout',
-      buttonText: 'Start Shopping',
-      gradient: 'from-blue-500 to-purple-600'
-    },
-    referral: {
-      emoji: '🎁',
-      title: 'Share the Love!',
-      subtitle: 'Refer friends and earn ₹100',
-      description: 'Get ₹100 for every friend who makes their first purchase',
-      buttonText: 'Get My Code',
-      gradient: 'from-pink-500 to-rose-600'
-    },
-    firstPurchase: {
-      emoji: '⚡',
-      title: 'First Order Boost!',
-      subtitle: 'Extra 20% off + Free Delivery',
-      description: 'Limited time offer for first-time buyers',
-      buttonText: 'Shop Now',
-      gradient: 'from-amber-500 to-orange-600'
-    },
-    returning: {
-      emoji: '👋',
-      title: 'Welcome Back!',
-      subtitle: 'We missed you! Here\'s 15% off',
-      description: 'Valid on orders above ₹999',
-      buttonText: 'Claim Offer',
-      gradient: 'from-green-500 to-teal-600'
-    },
-    referralSuccess: {
-      emoji: '🎊',
-      title: 'Referral Success!',
-      subtitle: '₹100 added to your wallet',
-      description: 'Your friend just made their first purchase',
-      buttonText: 'View Wallet',
-      gradient: 'from-purple-500 to-pink-600'
-    }
-  };
-
-  const config = content[type];
+  const config = popupContent[type];
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
         <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.9, opacity: 0 }}
-          className="relative w-full max-w-md"
+          initial={{ opacity: 0, scale: 0.95, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 12 }}
+          className="w-full max-w-md overflow-hidden rounded-[28px] bg-white shadow-2xl"
         >
-          <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
-            <div className={`bg-gradient-to-br ${config.gradient} p-8 text-white text-center relative`}>
-              <button
+          <div className={`bg-gradient-to-br ${config.gradient} p-6 text-white`}>
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <div className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs backdrop-blur">
+                  Universal popup system
+                </div>
+                <h3 className="text-2xl">{config.title}</h3>
+                <p className="text-sm text-white/85">{config.subtitle}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={onClose}
-                className="absolute top-4 right-4 w-8 h-8 bg-white/20 backdrop-blur rounded-full flex items-center justify-center hover:bg-white/30 transition-colors"
+                className="shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white"
               >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="text-6xl mb-4">{config.emoji}</div>
-              <h3 className="text-2xl mb-2">{config.title}</h3>
-              <p className="text-lg opacity-90">{config.subtitle}</p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <p className="text-center text-muted-foreground">{config.description}</p>
-
-              <Button onClick={onClose} className="w-full" size="lg">
-                {config.buttonText}
+                <X className="h-5 w-5" />
               </Button>
-
-              <button
-                onClick={onClose}
-                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Maybe later
-              </button>
             </div>
+
+            <div className="rounded-2xl bg-white/12 p-4 text-sm text-white/90 backdrop-blur">
+              {config.body}
+            </div>
+          </div>
+
+          <div className="space-y-3 p-6">
+            <Button onClick={onClose} className="w-full rounded-full">
+              {config.cta}
+            </Button>
+            <button
+              onClick={onClose}
+              className="w-full rounded-full border border-border px-4 py-3 text-sm text-muted-foreground transition hover:border-primary hover:text-foreground"
+            >
+              {config.secondary}
+            </button>
           </div>
         </motion.div>
       </div>

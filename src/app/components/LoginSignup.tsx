@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { BrandLogo } from './BrandLogo';
 
 interface LoginSignupProps {
   onClose: () => void;
@@ -39,14 +40,14 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-background">
-      <div className="h-full overflow-auto">
+        <div className="h-full overflow-auto">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-border">
           <div className="max-w-[1400px] mx-auto px-4 py-4 flex items-center justify-between">
             <Button variant="ghost" size="icon" onClick={onClose}>
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <h1 className="text-xl font-semibold text-primary">BYNDIO</h1>
+            <BrandLogo size="sm" />
             <div className="w-10" />
           </div>
         </div>
@@ -54,8 +55,8 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
         <div className="max-w-md mx-auto px-4 py-8">
           {/* Welcome Section */}
           <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-primary to-[#2196f3] rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl text-white font-bold">B</span>
+            <div className="mx-auto mb-4">
+              <BrandLogo size="lg" showTagline />
             </div>
             <h2 className="text-2xl font-bold mb-2">Welcome to BYNDIO</h2>
             <p className="text-muted-foreground">

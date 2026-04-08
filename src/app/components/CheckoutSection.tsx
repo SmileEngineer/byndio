@@ -1,208 +1,264 @@
-import { useState } from 'react';
-import { MapPin, CreditCard, Tag, ChevronLeft } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronLeft, CreditCard, MapPin, Percent, ShieldCheck, WalletCards } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Badge } from './ui/badge';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import type { LocationInfo, Product } from '../types';
 
-export function CheckoutSection({ onClose }: { onClose: () => void }) {
+interface CheckoutSectionProps {
+  onClose: () => void;
+  location: LocationInfo;
+  products: Product[];
+  availablePoints: number;
+}
+
+export function CheckoutSection({
+  onClose,
+  location,
+  products,
+  availablePoints,
+}: CheckoutSectionProps) {
   const [usePoints, setUsePoints] = useState(false);
-  const availablePoints = 2450;
-  const pointsValue = Math.floor(availablePoints / 10);
+  const [selectedPayment, setSelectedPayment] = useState('UPI');
 
-  const cartItems = [
-    {
-      id: '1',
-      name: 'Premium Cotton T-Shirt',
-      image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200&h=200&fit=crop',
-      price: 799,
-      quantity: 1,
-      size: 'M'
-    },
-    {
-      id: '2',
-      name: 'Denim Jeans',
-      image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=200&h=200&fit=crop',
-      price: 1499,
-      quantity: 1,
-      size: 'L'
-    }
-  ];
+  const cartItems = products.map((product) => ({ ...product, quantity: 1 }));
+  const subtotal = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    [cartItems],
+  );
+  const baseDiscount = Math.round(subtotal * 0.08);
+  const delivery = subtotal > 499 ? 0 : 40;
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discount = 200;
-  const delivery = 0;
-  const pointsDiscount = usePoints ? pointsValue : 0;
-  const total = subtotal - discount - pointsDiscount + delivery;
+  const maxPointsByOrderRule = Math.floor((subtotal * 0.15 * 10) / 10);
+  const pointsAllowed = Math.min(availablePoints, maxPointsByOrderRule);
+  const pointsDiscountValue = Math.floor(pointsAllowed / 10);
+  const pointsApplied = usePoints && availablePoints >= 100 ? pointsAllowed : 0;
+  const pointsDiscount = usePoints && availablePoints >= 100 ? pointsDiscountValue : 0;
+  const finalTotal = Math.max(0, subtotal - baseDiscount - pointsDiscount + delivery);
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <div className="sticky top-0 z-10 bg-white border-b border-border px-4 py-4 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <ChevronLeft className="w-5 h-5" />
-        </Button>
-        <h2>Checkout</h2>
+      <div className="sticky top-0 z-20 border-b border-border bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4">
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h2>Checkout</h2>
+            <p className="text-sm text-muted-foreground">
+              Apply points, verify location and place order securely.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="max-w-5xl mx-auto p-4 grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white rounded-xl p-6 space-y-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-primary" />
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[1fr_0.42fr]">
+        <div className="space-y-4">
+          <div className="rounded-[28px] bg-white p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-full bg-primary/10 p-3">
+                <MapPin className="h-5 w-5 text-primary" />
               </div>
-              <h3>Delivery Address</h3>
+              <div>
+                <h3>Delivery address</h3>
+                <p className="text-sm text-muted-foreground">
+                  Auto-filled from location detection and editable before placing order.
+                </p>
+              </div>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Full Name</Label>
-                <Input placeholder="Enter full name" />
+                <Label>Full name</Label>
+                <Input placeholder="Enter full name" defaultValue="BYNDIO User" />
               </div>
-
               <div className="space-y-2">
-                <Label>Phone Number</Label>
-                <Input type="tel" placeholder="+91 98765 43210" />
+                <Label>Phone number</Label>
+                <Input placeholder="+91 98765 43210" />
               </div>
-
-              <div className="space-y-2">
+              <div className="space-y-2 md:col-span-2">
                 <Label>Address</Label>
-                <Input placeholder="House no, Building name" />
+                <Input defaultValue={`${location.area}, ${location.city}`} />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Pincode</Label>
-                  <Input placeholder="400001" />
-                </div>
-                <div className="space-y-2">
-                  <Label>City</Label>
-                  <Input placeholder="Mumbai" />
-                </div>
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input defaultValue={location.city} />
+              </div>
+              <div className="space-y-2">
+                <Label>Pincode</Label>
+                <Input defaultValue={location.pincode} />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-6 space-y-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                <CreditCard className="w-5 h-5 text-primary" />
+          <div className="rounded-[28px] bg-white p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-full bg-primary/10 p-3">
+                <CreditCard className="h-5 w-5 text-primary" />
               </div>
-              <h3>Payment Method</h3>
+              <div>
+                <h3>Payment method</h3>
+                <p className="text-sm text-muted-foreground">Secure payment with UPI, cards and COD.</p>
+              </div>
             </div>
-
-            <div className="space-y-3">
+            <div className="grid gap-3">
               {[
-                { label: 'UPI', sublabel: 'PhonePe, GPay, Paytm' },
-                { label: 'Credit/Debit Card', sublabel: 'Visa, Mastercard, RuPay' },
-                { label: 'Net Banking', sublabel: 'All major banks' },
-                { label: 'Cash on Delivery', sublabel: 'Pay when you receive' }
-              ].map((method, idx) => (
-                <button
-                  key={idx}
-                  className={`w-full p-4 rounded-lg border-2 text-left transition-colors ${
-                    idx === 0 ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                  }`}
-                >
-                  <div>{method.label}</div>
-                  <div className="text-sm text-muted-foreground">{method.sublabel}</div>
-                </button>
-              ))}
+                { label: 'UPI', hint: 'PhonePe, GPay, Paytm' },
+                { label: 'Credit or debit card', hint: 'Visa, Mastercard, RuPay' },
+                { label: 'Net banking', hint: 'All major banks' },
+                { label: 'Cash on delivery', hint: 'Pay at doorstep' },
+              ].map((payment) => {
+                const active = selectedPayment === payment.label;
+                return (
+                  <button
+                    key={payment.label}
+                    onClick={() => setSelectedPayment(payment.label)}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      active ? 'border-primary bg-secondary/50' : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <div className="font-medium">{payment.label}</div>
+                    <div className="text-sm text-muted-foreground">{payment.hint}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-6 space-y-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
-                <Tag className="w-5 h-5 text-accent" />
+          <div className="rounded-[28px] bg-white p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-full bg-accent/15 p-3">
+                <WalletCards className="h-5 w-5 text-accent" />
               </div>
-              <h3>Apply Coupon</h3>
+              <div>
+                <h3>Apply reward points</h3>
+                <p className="text-sm text-muted-foreground">
+                  100 points = Rs 10. Max usage is 15% of order value.
+                </p>
+              </div>
             </div>
 
-            <div className="flex gap-2">
-              <Input placeholder="Enter coupon code" className="flex-1" />
-              <Button>Apply</Button>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-gradient-to-br from-primary/10 to-accent/10 rounded-lg">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span>Use Reward Points</span>
-                  <Badge variant="secondary">{availablePoints} pts</Badge>
+            <div className="rounded-2xl border border-border bg-secondary/40 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium">Available balance: {availablePoints} points</div>
+                  <div className="text-sm text-muted-foreground">
+                    Eligible for this order: {pointsAllowed} points (Rs {pointsDiscountValue})
+                  </div>
                 </div>
+                <Switch
+                  checked={usePoints}
+                  onCheckedChange={setUsePoints}
+                  disabled={availablePoints < 100}
+                />
+              </div>
+
+              {availablePoints < 100 ? (
                 <div className="text-sm text-muted-foreground">
-                  Save ₹{pointsValue} on this order
+                  Minimum 100 points are required to redeem at checkout.
                 </div>
+              ) : (
+                <div className="text-sm text-success">
+                  {usePoints
+                    ? `Using ${pointsApplied} points for Rs ${pointsDiscount} discount.`
+                    : 'Enable toggle to apply points instantly.'}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-dashed border-primary/40 p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
+                <Percent className="h-4 w-4" />
+                Coupon and promo
               </div>
-              <Switch checked={usePoints} onCheckedChange={setUsePoints} />
+              <div className="flex gap-2">
+                <Input placeholder="Enter coupon code" />
+                <Button variant="outline">Apply</Button>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl p-6 space-y-4 sticky top-24">
-            <h3>Order Summary</h3>
+        <aside className="space-y-4">
+          <div className="sticky top-24 rounded-[28px] bg-white p-6 shadow-sm">
+            <h3>Order summary</h3>
 
-            <div className="space-y-3">
+            <div className="mt-4 space-y-3">
               {cartItems.map((item) => (
-                <div key={item.id} className="flex gap-3">
-                  <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted shrink-0">
+                <div key={item.id} className="flex gap-3 rounded-2xl bg-muted/40 p-3">
+                  <div className="h-16 w-16 overflow-hidden rounded-xl bg-muted">
                     <ImageWithFallback
                       src={item.image}
                       alt={item.name}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm line-clamp-2">{item.name}</div>
-                    <div className="text-xs text-muted-foreground">Size: {item.size}</div>
-                    <div className="text-sm mt-1">₹{item.price}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-2 text-sm">{item.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{item.brand}</div>
+                    <div className="mt-1 text-sm font-medium">Rs {item.price.toLocaleString()}</div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="border-t border-border pt-4 space-y-2">
-              <div className="flex justify-between text-sm">
+            <div className="mt-5 space-y-2 border-t border-border pt-4 text-sm">
+              <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>₹{subtotal.toLocaleString()}</span>
+                <span>Rs {subtotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-sm text-success">
-                <span>Discount</span>
-                <span>-₹{discount}</span>
+              <div className="flex items-center justify-between text-success">
+                <span>Marketplace discount</span>
+                <span>-Rs {baseDiscount.toLocaleString()}</span>
               </div>
-              {usePoints && (
-                <div className="flex justify-between text-sm text-success">
-                  <span>Points Discount</span>
-                  <span>-₹{pointsDiscount}</span>
+              {pointsDiscount > 0 ? (
+                <div className="flex items-center justify-between text-success">
+                  <span>Points discount</span>
+                  <span>-Rs {pointsDiscount.toLocaleString()}</span>
                 </div>
-              )}
-              <div className="flex justify-between text-sm">
+              ) : null}
+              <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Delivery</span>
-                <span className="text-success">{delivery === 0 ? 'FREE' : `₹${delivery}`}</span>
+                <span>{delivery === 0 ? 'FREE' : `Rs ${delivery}`}</span>
               </div>
             </div>
 
-            <div className="border-t border-border pt-4">
-              <div className="flex justify-between items-baseline mb-4">
-                <span>Total</span>
-                <span className="text-2xl">₹{total.toLocaleString()}</span>
+            <div className="mt-4 border-t border-border pt-4">
+              <div className="mb-4 flex items-end justify-between">
+                <span>Total payable</span>
+                <span className="text-3xl font-semibold">Rs {finalTotal.toLocaleString()}</span>
               </div>
 
-              <Button className="w-full" size="lg">
-                Place Order
+              <Button className="w-full rounded-full" size="lg">
+                Place order
               </Button>
-            </div>
 
-            {usePoints && (
-              <div className="bg-success/10 border border-success/20 rounded-lg p-3 text-sm text-success">
-                You're saving ₹{pointsDiscount} with reward points! 🎉
+              <div className="mt-3 rounded-2xl bg-emerald-50 p-3 text-xs text-emerald-700">
+                Checkout is protected with secure payment and anti-abuse points validation.
               </div>
-            )}
+            </div>
           </div>
-        </div>
+
+          <div className="rounded-[28px] border border-border bg-white p-5 text-sm">
+            <div className="mb-2 flex items-center gap-2 font-medium text-primary">
+              <ShieldCheck className="h-4 w-4" />
+              Trust strip
+            </div>
+            <div className="space-y-1 text-muted-foreground">
+              <div>Free delivery on eligible products</div>
+              <div>Easy returns within 7 days</div>
+              <div>Secure payment and verified sellers</div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant="secondary">Free Delivery</Badge>
+              <Badge variant="secondary">Easy Returns</Badge>
+              <Badge variant="secondary">Secure Payment</Badge>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

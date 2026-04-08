@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Gift, LayoutDashboard, MapPin, Store } from 'lucide-react';
 import { Header } from './components/Header';
 import { CategoryTabs } from './components/CategoryTabs';
 import { HeroBanner } from './components/HeroBanner';
@@ -13,435 +14,357 @@ import { PopupModal } from './components/PopupModal';
 import { CheckoutSection } from './components/CheckoutSection';
 import { LoginSignup } from './components/LoginSignup';
 import { AdminDashboard } from './components/AdminDashboard';
-import { Gift, Store, MapPin, LayoutDashboard } from 'lucide-react';
+import { LocationSheet } from './components/LocationSheet';
+import { ProductListing } from './components/ProductListing';
 import { Button } from './components/ui/button';
+import {
+  circleCategories,
+  defaultLocation,
+  dropDeals,
+  getProductsForCategory,
+  homeCollections,
+  topCategories,
+  vibeCards,
+} from './mockData';
+import type { HomeCollection, LocationInfo, PopupType, Product, View } from './types';
 
-type View = 'home' | 'rewards' | 'productDetail' | 'sellerOnboarding' | 'checkout' | 'login' | 'adminDashboard';
-type PopupType = 'signup' | 'referral' | 'firstPurchase' | 'returning' | 'referralSuccess' | null;
+function isServiceable(product: Product, location: LocationInfo) {
+  if (!product.serviceZones || product.serviceZones.length === 0) {
+    return true;
+  }
+
+  return product.serviceZones.includes(location.city);
+}
+
+function filterByLocation(products: Product[], location: LocationInfo) {
+  const serviceable = products.filter((product) => isServiceable(product, location));
+  if (serviceable.length > 0) {
+    return serviceable;
+  }
+
+  return products;
+}
 
 export default function App() {
   const [currentView, setCurrentView] = useState<View>('home');
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [showPopup, setShowPopup] = useState<PopupType>('signup');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [location, setLocation] = useState<LocationInfo>(defaultLocation);
+  const [activeCategory, setActiveCategory] = useState('for-you');
+  const [showLocationSheet, setShowLocationSheet] = useState(false);
+  const [popupType, setPopupType] = useState<PopupType | null>(null);
+  const [returnViewAfterDetail, setReturnViewAfterDetail] = useState<View>('home');
+  const [checkoutItems, setCheckoutItems] = useState<Product[]>([]);
+  const [exitPopupShown, setExitPopupShown] = useState(false);
+  const [listingState, setListingState] = useState<{
+    title: string;
+    description: string;
+    products: Product[];
+  }>({
+    title: 'For You',
+    description: 'Personalized picks based on location and current trends.',
+    products: [],
+  });
 
-  const bestDeals = [
-    {
-      id: '1',
-      name: 'Premium Cotton T-Shirt - Comfortable Fit',
-      image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=400&fit=crop',
-      price: 599,
-      mrp: 1299,
-      discount: 54,
-      rating: 4.3,
-      reviews: 1247,
-      localSeller: true,
-      deliveryTime: '2 hrs'
-    },
-    {
-      id: '2',
-      name: 'Wireless Bluetooth Earbuds with Charging Case',
-      image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&h=400&fit=crop',
-      price: 1299,
-      mrp: 3999,
-      discount: 67,
-      rating: 4.5,
-      reviews: 3421,
-      sponsored: true,
-      deliveryTime: '4 hrs'
-    },
-    {
-      id: '3',
-      name: 'Classic Denim Jeans - Slim Fit',
-      image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=400&fit=crop',
-      price: 1499,
-      mrp: 2999,
-      discount: 50,
-      rating: 4.4,
-      reviews: 892,
-      localSeller: true,
-      deliveryTime: '3 hrs'
-    },
-    {
-      id: '4',
-      name: 'Smart Watch with Fitness Tracking',
-      image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&h=400&fit=crop',
-      price: 2499,
-      mrp: 5999,
-      discount: 58,
-      rating: 4.6,
-      reviews: 2156,
-      deliveryTime: '6 hrs'
-    },
-    {
-      id: '5',
-      name: 'Leather Wallet - Genuine Leather',
-      image: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=400&h=400&fit=crop',
-      price: 799,
-      mrp: 1999,
-      discount: 60,
-      rating: 4.2,
-      reviews: 567,
-      localSeller: true,
-      deliveryTime: '2 hrs'
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPopupType('signup');
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseLeave = (event: MouseEvent) => {
+      if (event.clientY > 8 || exitPopupShown || popupType || currentView !== 'home') {
+        return;
+      }
+      setExitPopupShown(true);
+      setPopupType('exitIntent');
+    };
+
+    window.addEventListener('mouseleave', handleMouseLeave);
+    return () => window.removeEventListener('mouseleave', handleMouseLeave);
+  }, [currentView, exitPopupShown, popupType]);
+
+  const locationAwareCollections = useMemo(
+    () =>
+      homeCollections.map((collection) => ({
+        ...collection,
+        products: filterByLocation(collection.products, location),
+      })),
+    [location],
+  );
+
+  const locationAwareDropDeals = useMemo(
+    () => dropDeals.filter((deal) => isServiceable(deal, location)),
+    [location],
+  );
+
+  const openListing = (title: string, description: string, products: Product[]) => {
+    setListingState({ title, description, products: filterByLocation(products, location) });
+    setCurrentView('listing');
+  };
+
+  const openCategoryListing = (categoryKey: string, categoryLabel: string) => {
+    setActiveCategory(categoryKey);
+
+    if (categoryKey === 'for-you') {
+      setCurrentView('home');
+      return;
     }
-  ];
 
-  const nearbyStores = bestDeals.map((p, i) => ({
-    ...p,
-    id: `nearby-${i}`,
-    localSeller: true,
-    deliveryTime: ['1 hr', '2 hrs', '3 hrs'][i % 3]
-  }));
+    const products = getProductsForCategory(categoryKey);
+    openListing(
+      `${categoryLabel} picks`,
+      'Dynamic category feed with local seller prioritization, discount badges and quick filters.',
+      products,
+    );
+  };
 
-  const trendingProducts = [
-    {
-      id: 'trend-1',
-      name: 'Running Shoes - Lightweight & Breathable',
-      image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop',
-      price: 2199,
-      mrp: 4999,
-      discount: 56,
-      rating: 4.7,
-      reviews: 1834,
-      stockLeft: 7
-    },
-    {
-      id: 'trend-2',
-      name: 'Backpack - Water Resistant with USB Port',
-      image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&h=400&fit=crop',
-      price: 1299,
-      mrp: 2999,
-      discount: 57,
-      rating: 4.4,
-      reviews: 1245,
-      localSeller: true
-    },
-    {
-      id: 'trend-3',
-      name: 'Sunglasses - UV Protection Polarized',
-      image: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=400&h=400&fit=crop',
-      price: 899,
-      mrp: 2499,
-      discount: 64,
-      rating: 4.3,
-      reviews: 678,
-      stockLeft: 5
-    },
-    {
-      id: 'trend-4',
-      name: 'Water Bottle - Insulated Steel 1L',
-      image: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=400&h=400&fit=crop',
-      price: 499,
-      mrp: 999,
-      discount: 50,
-      rating: 4.5,
-      reviews: 2341,
-      localSeller: true
-    },
-    {
-      id: 'trend-5',
-      name: 'Phone Case - Shockproof Clear',
-      image: 'https://images.unsplash.com/photo-1585248809095-77b69aba8e5b?w=400&h=400&fit=crop',
-      price: 299,
-      mrp: 799,
-      discount: 63,
-      rating: 4.2,
-      reviews: 3456,
-      stockLeft: 8
-    }
-  ];
+  const openCollectionListing = (collection: HomeCollection) => {
+    openListing(collection.title, collection.subtitle, collection.products);
+  };
 
-  const creatorPicks = [
-    {
-      id: 'creator-1',
-      name: 'Aesthetic Hoodie - Oversized Fit',
-      image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=400&h=400&fit=crop',
-      price: 1799,
-      mrp: 3999,
-      discount: 55,
-      rating: 4.6,
-      reviews: 892,
-      creator: '@fashionista'
-    },
-    {
-      id: 'creator-2',
-      name: 'Minimalist Watch - Rose Gold',
-      image: 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?w=400&h=400&fit=crop',
-      price: 1999,
-      mrp: 4999,
-      discount: 60,
-      rating: 4.7,
-      reviews: 1234,
-      creator: '@techreview'
-    },
-    {
-      id: 'creator-3',
-      name: 'Laptop Sleeve - Vegan Leather',
-      image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=400&h=400&fit=crop',
-      price: 899,
-      mrp: 1999,
-      discount: 55,
-      rating: 4.4,
-      reviews: 567,
-      creator: '@techblogger'
-    },
-    {
-      id: 'creator-4',
-      name: 'Yoga Mat - Extra Thick Non-Slip',
-      image: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=400&h=400&fit=crop',
-      price: 1299,
-      mrp: 2999,
-      discount: 57,
-      rating: 4.8,
-      reviews: 2345,
-      creator: '@fitnessqueen'
-    },
-    {
-      id: 'creator-5',
-      name: 'Portable Speaker - Waterproof Bluetooth',
-      image: 'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=400&h=400&fit=crop',
-      price: 1599,
-      mrp: 3999,
-      discount: 60,
-      rating: 4.5,
-      reviews: 1678,
-      creator: '@musiclover'
-    }
-  ];
-
-  const budgetStore = [
-    {
-      id: 'budget-1',
-      name: 'Cotton Socks Pack of 5',
-      image: 'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?w=400&h=400&fit=crop',
-      price: 299,
-      mrp: 699,
-      discount: 57,
-      rating: 4.1,
-      reviews: 3421
-    },
-    {
-      id: 'budget-2',
-      name: 'Notebook Set - A5 Ruled 3 Pack',
-      image: 'https://images.unsplash.com/photo-1517842645767-c639042777db?w=400&h=400&fit=crop',
-      price: 199,
-      mrp: 499,
-      discount: 60,
-      rating: 4.3,
-      reviews: 1234
-    },
-    {
-      id: 'budget-3',
-      name: 'Phone Stand - Adjustable Aluminum',
-      image: 'https://images.unsplash.com/photo-1580910051074-3eb694886505?w=400&h=400&fit=crop',
-      price: 349,
-      mrp: 999,
-      discount: 65,
-      rating: 4.2,
-      reviews: 892
-    },
-    {
-      id: 'budget-4',
-      name: 'Keychain - Leather with Clasp',
-      image: 'https://images.unsplash.com/photo-1563465585-5c4f32f2e8f7?w=400&h=400&fit=crop',
-      price: 199,
-      mrp: 499,
-      discount: 60,
-      rating: 4.0,
-      reviews: 567
-    },
-    {
-      id: 'budget-5',
-      name: 'Cable Organizer - 3 Pack',
-      image: 'https://images.unsplash.com/photo-1625948515291-69613efd103f?w=400&h=400&fit=crop',
-      price: 249,
-      mrp: 699,
-      discount: 64,
-      rating: 4.4,
-      reviews: 2156
-    }
-  ];
-
-  const dropDeals = [
-    {
-      id: 'drop-1',
-      name: 'Wireless Mouse - Ergonomic Design',
-      image: 'https://images.unsplash.com/photo-1527814050087-3793815479db?w=400&h=400&fit=crop',
-      price: 599,
-      mrp: 1999,
-      discount: 70,
-      rating: 4.4,
-      reviews: 1234,
-      endsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      stockLeft: 23,
-      viewing: 145
-    },
-    {
-      id: 'drop-2',
-      name: 'Desk Lamp - LED with Touch Control',
-      image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400&h=400&fit=crop',
-      price: 899,
-      mrp: 2999,
-      discount: 70,
-      rating: 4.6,
-      reviews: 892,
-      endsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      stockLeft: 15,
-      viewing: 89
-    },
-    {
-      id: 'drop-3',
-      name: 'Gym Bag - Water Resistant Large',
-      image: 'https://images.unsplash.com/photo-1547949003-9792a18a2601?w=400&h=400&fit=crop',
-      price: 1199,
-      mrp: 3999,
-      discount: 70,
-      rating: 4.5,
-      reviews: 678,
-      endsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      stockLeft: 31,
-      viewing: 203
-    },
-    {
-      id: 'drop-4',
-      name: 'Coffee Mug Set - Ceramic 4 Pack',
-      image: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400&h=400&fit=crop',
-      price: 699,
-      mrp: 1999,
-      discount: 65,
-      rating: 4.3,
-      reviews: 1567,
-      endsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      stockLeft: 42,
-      viewing: 167
-    }
-  ];
-
-  const handleProductClick = (product: any) => {
+  const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
+    setReturnViewAfterDetail(currentView);
     setCurrentView('productDetail');
   };
 
-  const handleLocationClick = () => {
-    alert('Location picker would open here');
+  const handleAddToCart = (product: Product) => {
+    setCheckoutItems((items) => {
+      if (items.find((item) => item.id === product.id)) {
+        return items;
+      }
+
+      return [...items, product];
+    });
   };
 
-  const handleLoginClick = () => {
-    setCurrentView('login');
+  const handleBuyNow = (product: Product) => {
+    setCheckoutItems([product]);
+    setCurrentView('checkout');
   };
 
-  const handleLogin = () => {
-    setCurrentView('home');
-    setShowPopup(null);
-  };
+  const renderHome = () => (
+    <>
+      <Header
+        location={location}
+        onLocationClick={() => setShowLocationSheet(true)}
+        onLoginClick={() => setCurrentView('login')}
+        onRewardsClick={() => setCurrentView('rewards')}
+      />
 
-  const renderView = () => {
-    switch (currentView) {
-      case 'login':
-        return <LoginSignup onClose={() => setCurrentView('home')} onLogin={handleLogin} />;
-      case 'adminDashboard':
-        return <AdminDashboard onClose={() => setCurrentView('home')} />;
-      case 'rewards':
-        return <RewardsSection onClose={() => setCurrentView('home')} />;
-      case 'productDetail':
-        return (
-          <ProductDetail
-            product={selectedProduct}
-            onClose={() => setCurrentView('home')}
-            onAddToCart={() => alert('Added to cart!')}
-            onBuyNow={() => setCurrentView('checkout')}
+      <CategoryTabs
+        categories={topCategories}
+        activeCategory={activeCategory}
+        onSelect={(categoryKey) => {
+          const category = topCategories.find((entry) => entry.key === categoryKey);
+          openCategoryListing(categoryKey, category?.label || 'Category');
+        }}
+      />
+
+      <HeroBanner
+        location={location}
+        onExploreDeals={() =>
+          openListing(
+            'Drop Deals',
+            'Limited-time drops with countdowns, stock pressure and creator picks.',
+            locationAwareDropDeals,
+          )
+        }
+        onExploreNearby={() =>
+          openListing(
+            'Nearby Stores',
+            'Products from local sellers with fast delivery and hyperlocal availability.',
+            locationAwareCollections.find((collection) => collection.key === 'nearby-stores')?.products ||
+              [],
+          )
+        }
+      />
+
+      <CircularCategories
+        categories={circleCategories}
+        onSelect={(categoryKey) => {
+          const category = circleCategories.find((entry) => entry.key === categoryKey);
+          openCategoryListing(categoryKey, category?.name || 'Category');
+        }}
+      />
+
+      {locationAwareCollections
+        .filter((collection) => collection.key !== 'creator-picks')
+        .map((collection) => (
+          <ProductSection
+            key={collection.key}
+            title={collection.title}
+            subtitle={collection.subtitle}
+            products={collection.products}
+            pill={collection.pill}
+            onProductClick={handleProductClick}
+            onViewAll={() => openCollectionListing(collection)}
           />
-        );
-      case 'sellerOnboarding':
-        return <SellerOnboarding onClose={() => setCurrentView('home')} />;
-      case 'checkout':
-        return <CheckoutSection onClose={() => setCurrentView('home')} />;
-      default:
-        return (
-          <>
-            <Header onLocationClick={handleLocationClick} onLoginClick={handleLoginClick} />
-            <CategoryTabs />
-            <HeroBanner />
-            <CircularCategories />
-            <ProductSection
-              title="Best Deals"
-              products={bestDeals}
-              onProductClick={handleProductClick}
-            />
-            <ProductSection
-              title="Nearby Stores - Fast Delivery 🚀"
-              products={nearbyStores}
-              onProductClick={handleProductClick}
-            />
-            <DropDeals deals={dropDeals} onProductClick={handleProductClick} />
-            <ProductSection
-              title="Trending Products"
-              products={trendingProducts}
-              onProductClick={handleProductClick}
-            />
-            <ShopYourVibe />
-            <ProductSection
-              title="Creator Picks ⭐"
-              products={creatorPicks}
-              onProductClick={handleProductClick}
-            />
-            <ProductSection
-              title="Budget Store - Under ₹499"
-              products={budgetStore}
-              onProductClick={handleProductClick}
-            />
+        ))}
 
-            <div className="h-24" />
+      <DropDeals
+        deals={locationAwareDropDeals}
+        onProductClick={handleProductClick}
+        onViewAll={() =>
+          openListing(
+            'Drop Deals',
+            'Each product has a dedicated timer, stock indicator and active viewer count.',
+            locationAwareDropDeals,
+          )
+        }
+      />
 
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border">
-              <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-around">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex flex-col gap-1 h-auto py-2"
-                  onClick={() => setCurrentView('rewards')}
-                >
-                  <Gift className="w-5 h-5" />
-                  <span className="text-xs">Rewards</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex flex-col gap-1 h-auto py-2"
-                  onClick={handleLocationClick}
-                >
-                  <MapPin className="w-5 h-5" />
-                  <span className="text-xs">Nearby</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex flex-col gap-1 h-auto py-2"
-                  onClick={() => setCurrentView('sellerOnboarding')}
-                >
-                  <Store className="w-5 h-5" />
-                  <span className="text-xs">Sell</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex flex-col gap-1 h-auto py-2"
-                  onClick={() => setCurrentView('adminDashboard')}
-                >
-                  <LayoutDashboard className="w-5 h-5" />
-                  <span className="text-xs">Dashboard</span>
-                </Button>
-              </div>
-            </div>
-          </>
-        );
-    }
-  };
+      <ShopYourVibe
+        vibes={vibeCards}
+        onSelectVibe={(vibe) =>
+          openListing(
+            vibe.title,
+            `${vibe.subtitle} ${vibe.tagline}`,
+            getProductsForCategory('fashion').filter(
+              (product) =>
+                vibe.filterKey === 'under999'
+                  ? product.price <= 999
+                  : vibe.filterKey === 'topRated'
+                    ? product.rating >= 4.5
+                    : true,
+            ),
+          )
+        }
+      />
+
+      {locationAwareCollections
+        .filter((collection) => collection.key === 'creator-picks')
+        .map((collection) => (
+          <ProductSection
+            key={collection.key}
+            title={collection.title}
+            subtitle={collection.subtitle}
+            products={collection.products}
+            pill={collection.pill}
+            onProductClick={handleProductClick}
+            onViewAll={() => openCollectionListing(collection)}
+          />
+        ))}
+
+      <div className="h-24" />
+
+      <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-white">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-around px-4 py-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto flex-col gap-1 py-2"
+            onClick={() => setCurrentView('rewards')}
+          >
+            <Gift className="h-5 w-5" />
+            <span className="text-xs">Rewards</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto flex-col gap-1 py-2"
+            onClick={() => setShowLocationSheet(true)}
+          >
+            <MapPin className="h-5 w-5" />
+            <span className="text-xs">Nearby</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto flex-col gap-1 py-2"
+            onClick={() => setCurrentView('sellerOnboarding')}
+          >
+            <Store className="h-5 w-5" />
+            <span className="text-xs">Sell</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto flex-col gap-1 py-2"
+            onClick={() => setCurrentView('sellerDashboard')}
+          >
+            <LayoutDashboard className="h-5 w-5" />
+            <span className="text-xs">Dashboard</span>
+          </Button>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div className="min-h-screen bg-muted/30">
-      {renderView()}
-      {showPopup && <PopupModal type={showPopup} onClose={() => setShowPopup(null)} />}
+      {currentView === 'home' ? renderHome() : null}
+
+      {currentView === 'listing' ? (
+        <ProductListing
+          title={listingState.title}
+          description={listingState.description}
+          products={listingState.products}
+          location={location}
+          onBack={() => setCurrentView('home')}
+          onProductClick={handleProductClick}
+        />
+      ) : null}
+
+      {currentView === 'productDetail' ? (
+        <ProductDetail
+          product={selectedProduct}
+          location={location}
+          onClose={() => setCurrentView(returnViewAfterDetail)}
+          onAddToCart={handleAddToCart}
+          onBuyNow={handleBuyNow}
+        />
+      ) : null}
+
+      {currentView === 'checkout' ? (
+        <CheckoutSection
+          onClose={() => setCurrentView('home')}
+          location={location}
+          products={checkoutItems.length ? checkoutItems : selectedProduct ? [selectedProduct] : []}
+          availablePoints={2450}
+        />
+      ) : null}
+
+      {currentView === 'rewards' ? (
+        <RewardsSection
+          onClose={() => setCurrentView('home')}
+          onTriggerPopup={(type) => setPopupType(type)}
+        />
+      ) : null}
+
+      {currentView === 'sellerOnboarding' ? (
+        <SellerOnboarding onClose={() => setCurrentView('home')} />
+      ) : null}
+
+      {currentView === 'sellerDashboard' ? (
+        <AdminDashboard onClose={() => setCurrentView('home')} />
+      ) : null}
+
+      {currentView === 'login' ? (
+        <LoginSignup
+          onClose={() => setCurrentView('home')}
+          onLogin={() => {
+            setCurrentView('home');
+            setPopupType('firstPurchase');
+          }}
+        />
+      ) : null}
+
+      {showLocationSheet ? (
+        <LocationSheet
+          currentLocation={location}
+          onClose={() => setShowLocationSheet(false)}
+          onApply={(nextLocation) => {
+            setLocation(nextLocation);
+            setPopupType('returning');
+          }}
+        />
+      ) : null}
+
+      {popupType ? <PopupModal type={popupType} onClose={() => setPopupType(null)} /> : null}
     </div>
   );
 }
