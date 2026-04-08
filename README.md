@@ -31,6 +31,24 @@ npm run build
 
 Backend base URL: `http://localhost:4000/api`
 
+## Environment
+
+Create `.env` with:
+
+```env
+NODE_ENV=production
+API_PORT=4000
+JWT_SECRET=replace_with_long_random_secret
+JWT_EXPIRES_IN=7d
+DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require&channel_binding=require
+```
+
+Optional DB tuning:
+
+- `DB_STATE_TABLE` (default: `byndio_app_state`)
+- `DB_STATE_KEY` (default: `main`)
+- `PGSSL=disable` to disable SSL in local non-TLS Postgres
+
 ## Seed Accounts
 
 - Admin: `admin@byndio.local` / `Admin@123`
