@@ -317,6 +317,7 @@ export function createInitialState() {
     fraudFlags: [],
     auditLogs: [],
     orders: [],
+    rtoCharges: [],
     returnRequests: [],
     refunds: [],
     jobs: {

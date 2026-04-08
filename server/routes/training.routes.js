@@ -9,6 +9,7 @@ import { addAuditLog } from '../audit.js';
 const subscribeSchema = z.object({
   courseId: z.string().min(3),
   months: z.number().int().min(1).max(12).default(1),
+  paymentIntentId: z.string().min(3).optional(),
 });
 
 const router = Router();
@@ -76,6 +77,45 @@ router.post('/subscriptions', async (req, res) => {
       const now = new Date();
       const endsAt = new Date(now);
       endsAt.setMonth(endsAt.getMonth() + input.months);
+      const amountRs = course.monthlyPriceRs * input.months;
+
+      let paymentIntent = null;
+      if (amountRs > 0) {
+        if (!input.paymentIntentId) {
+          const error = new Error('paymentIntentId is required to activate a paid training subscription.');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        paymentIntent = (db.paymentIntents || []).find((entry) => entry.id === input.paymentIntentId);
+        if (!paymentIntent || paymentIntent.userId !== req.auth.sub) {
+          const error = new Error('Payment intent not found for this user.');
+          error.statusCode = 404;
+          throw error;
+        }
+        if (paymentIntent.status !== 'succeeded') {
+          const error = new Error('Payment intent must be succeeded before activating subscription.');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (paymentIntent.amountRs < amountRs) {
+          const error = new Error('Payment intent amount is lower than training subscription fee.');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (paymentIntent.linkedOrderId) {
+          const error = new Error('Payment intent already linked to an order and cannot be reused.');
+          error.statusCode = 400;
+          throw error;
+        }
+        if (paymentIntent.linkedTrainingSubscriptionId) {
+          const error = new Error(
+            'Payment intent already linked to another training subscription and cannot be reused.',
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+      }
 
       const subscription = {
         id: crypto.randomUUID(),
@@ -83,13 +123,19 @@ router.post('/subscriptions', async (req, res) => {
         courseId: course.id,
         courseTitle: course.title,
         months: input.months,
-        amountRs: course.monthlyPriceRs * input.months,
+        amountRs,
         status: 'active',
+        paymentIntentId: paymentIntent ? paymentIntent.id : null,
+        paymentStatus: amountRs > 0 ? 'paid' : 'free',
         createdAt: now.toISOString(),
         startsAt: now.toISOString(),
         endsAt: endsAt.toISOString(),
         cancelledAt: null,
       };
+
+      if (paymentIntent) {
+        paymentIntent.linkedTrainingSubscriptionId = subscription.id;
+      }
 
       db.trainingSubscriptions.push(subscription);
       addAuditLog(db, {
@@ -101,6 +147,7 @@ router.post('/subscriptions', async (req, res) => {
           courseId: course.id,
           months: input.months,
           amountRs: subscription.amountRs,
+          paymentIntentId: subscription.paymentIntentId,
         },
       });
 

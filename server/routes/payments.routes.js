@@ -47,6 +47,7 @@ router.post('/intents', async (req, res) => {
         status: 'created',
         failureReason: null,
         linkedOrderId: null,
+        linkedTrainingSubscriptionId: null,
         createdAt: new Date().toISOString(),
         confirmedAt: null,
       };

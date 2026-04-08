@@ -76,19 +76,21 @@ router.post('/register', async (req, res) => {
         throw error;
       }
 
-      if (input.deviceId && input.referralCode) {
-        const deviceAlreadyUsed = db.users.some((user) => user.deviceId === input.deviceId);
-        if (deviceAlreadyUsed) {
+      if (input.deviceId) {
+        const existingDeviceUser = db.users.find((user) => user.deviceId === input.deviceId);
+        if (existingDeviceUser) {
           addFraudFlag(db, {
-            type: 'same_device_referral_attempt',
+            userId: existingDeviceUser.id,
+            type: 'same_device_multi_account_attempt',
             severity: 'high',
-            reason: 'Referral blocked because same device attempted multiple referral signups.',
+            reason: 'Registration blocked because same device attempted multiple accounts.',
             metadata: {
               deviceId: input.deviceId,
               ip,
+              attemptedEmail: input.email.toLowerCase(),
             },
           });
-          const error = new Error('Referral blocked: same device cannot create multiple referral accounts.');
+          const error = new Error('Registration blocked: same device cannot create multiple accounts.');
           error.statusCode = 400;
           throw error;
         }

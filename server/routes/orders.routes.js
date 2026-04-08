@@ -11,6 +11,7 @@ import {
   getUserBalance,
   grantPoints,
 } from '../rewards.js';
+import { isServiceableProduct } from '../location.js';
 
 const itemSchema = z.object({
   productId: z.string().min(3),
@@ -47,6 +48,7 @@ const updateOrderStatusSchema = z.object({
     'rto',
   ]),
   note: z.string().trim().max(500).optional(),
+  rtoReason: z.enum(['customer_rejected', 'delivery_failed', 'wrong_address', 'other']).optional(),
 });
 
 const sellerVerificationSchema = z.object({
@@ -56,6 +58,148 @@ const sellerVerificationSchema = z.object({
 });
 
 const router = Router();
+const SHIPPING_READY_STATUSES = new Set(['shipped', 'out_for_delivery', 'delivered', 'rto']);
+const ORDER_STATUS_TRANSITIONS = {
+  placed: ['verified_for_shipping', 'cancelled'],
+  verified_for_shipping: ['shipped', 'cancelled'],
+  shipped: ['out_for_delivery', 'rto'],
+  out_for_delivery: ['delivered', 'rto'],
+  delivered: [],
+  cancelled: [],
+  rto: [],
+  return_requested: [],
+  returned_refunded: [],
+};
+
+function canTransitionOrderStatus(currentStatus, nextStatus) {
+  if (currentStatus === nextStatus) {
+    return true;
+  }
+
+  const next = ORDER_STATUS_TRANSITIONS[currentStatus];
+  if (!Array.isArray(next)) {
+    return false;
+  }
+
+  return next.includes(nextStatus);
+}
+
+function assertOrderServiceability(db, items, address) {
+  const location = {
+    city: String(address.city || '').trim(),
+    pincode: String(address.pincode || '').trim(),
+  };
+
+  const productsById = new Map((db.products || []).map((product) => [product.id, product]));
+  for (const item of items) {
+    const product = productsById.get(item.productId);
+    if (!product) {
+      const error = new Error(`Product not found: ${item.productId}`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!isServiceableProduct(product, location)) {
+      const error = new Error(
+        `Product "${product.name}" is not serviceable for ${location.city} (${location.pincode}).`,
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+}
+
+function hasVerification(item) {
+  return Array.isArray(item?.sellerVerification) && item.sellerVerification.length > 0;
+}
+
+function ensureVerificationBeforeShipping(order) {
+  for (const item of order.items || []) {
+    if (!hasVerification(item)) {
+      return item;
+    }
+  }
+
+  return null;
+}
+
+function createRtoCharges(db, order, reason, actorUserId) {
+  if (!Array.isArray(db.rtoCharges)) {
+    db.rtoCharges = [];
+  }
+
+  const existingBySeller = new Map(
+    (db.rtoCharges || [])
+      .filter((entry) => entry.orderId === order.id)
+      .map((entry) => [entry.sellerId, entry]),
+  );
+
+  const sellers = new Set((order.items || []).map((item) => item.sellerId));
+  const subtotal = Math.max(
+    1,
+    Number(
+      order?.pricing?.subtotal ||
+        (order.items || []).reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
+    ),
+  );
+  const orderDeliveryCharge = Number(order?.pricing?.deliveryCharge || 0);
+
+  const chargeEntries = [];
+  for (const sellerId of sellers) {
+    const sellerLineTotal = (order.items || [])
+      .filter((item) => item.sellerId === sellerId)
+      .reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+
+    if (sellerLineTotal <= 0) {
+      continue;
+    }
+
+    const allocatedForward = Math.max(
+      20,
+      Math.round(((orderDeliveryCharge > 0 ? orderDeliveryCharge : 40) * sellerLineTotal) / subtotal),
+    );
+    const sellerOnboarding = (db.sellerOnboarding || []).find(
+      (entry) => entry.userId === sellerId && entry.status === 'submitted',
+    );
+    const hasGST = Boolean(sellerOnboarding?.hasGST);
+    const totalChargeRs = allocatedForward * 2;
+
+    const existing = existingBySeller.get(sellerId);
+    if (existing) {
+      existing.reason = reason || existing.reason || 'other';
+      existing.forwardShippingRs = allocatedForward;
+      existing.returnShippingRs = allocatedForward;
+      existing.totalChargeRs = totalChargeRs;
+      existing.rule = hasGST ? 'gst_all_india' : 'without_gst_local';
+      existing.sellerHasGST = hasGST;
+      existing.status = 'due';
+      existing.updatedAt = new Date().toISOString();
+      chargeEntries.push(existing);
+      continue;
+    }
+
+    const created = {
+      id: crypto.randomUUID(),
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      sellerId,
+      sellerHasGST: hasGST,
+      rule: hasGST ? 'gst_all_india' : 'without_gst_local',
+      reason: reason || 'other',
+      forwardShippingRs: allocatedForward,
+      returnShippingRs: allocatedForward,
+      totalChargeRs,
+      status: 'due',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      raisedByUserId: actorUserId,
+    };
+    db.rtoCharges.push(created);
+    chargeEntries.push(created);
+  }
+
+  return chargeEntries;
+}
 
 function buildOrderPreview(db, userId, input) {
   const productsById = new Map(db.products.map((product) => [product.id, product]));
@@ -146,6 +290,7 @@ router.post('/', async (req, res) => {
       }
 
       const preview = buildOrderPreview(db, user.id, input);
+      assertOrderServiceability(db, preview.items, input.address);
 
       let paymentIntent = null;
       if (input.paymentMethod !== 'COD') {
@@ -170,6 +315,29 @@ router.post('/', async (req, res) => {
 
         if (paymentIntent.amountRs < preview.pricing.totalPayable) {
           const error = new Error('Payment intent amount is lower than payable order total.');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (paymentIntent.linkedOrderId) {
+          const error = new Error('Payment intent already used for another order.');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (paymentIntent.linkedTrainingSubscriptionId) {
+          const error = new Error('Payment intent already linked to a training subscription.');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const context = String(paymentIntent.context || '')
+          .trim()
+          .toLowerCase();
+        if (context && !['checkout', 'order'].includes(context)) {
+          const error = new Error(
+            `Payment intent context "${paymentIntent.context}" is not valid for order checkout.`,
+          );
           error.statusCode = 400;
           throw error;
         }
@@ -350,7 +518,7 @@ router.post('/:orderId/seller-verification', requireRoles('seller', 'admin'), as
         id: crypto.randomUUID(),
         imageUrl: input.imageUrl,
         note: input.note || null,
-        sellerId: req.auth.sub,
+        sellerId: req.auth.role === 'admin' ? item.sellerId : req.auth.sub,
         createdAt: new Date().toISOString(),
       };
       item.sellerVerification.push(verification);
@@ -407,10 +575,42 @@ router.patch('/:orderId/status', requireRoles('seller', 'admin'), async (req, re
         throw error;
       }
 
+      if (!canTransitionOrderStatus(order.status, input.status)) {
+        const error = new Error(
+          `Invalid order status transition from "${order.status}" to "${input.status}".`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      if (input.status === 'rto' && !input.rtoReason) {
+        const error = new Error(
+          'rtoReason is required for RTO status updates (customer_rejected, delivery_failed, wrong_address, other).',
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      if (SHIPPING_READY_STATUSES.has(input.status)) {
+        const pendingVerificationItem = ensureVerificationBeforeShipping(order);
+        if (pendingVerificationItem) {
+          const error = new Error(
+            `Seller verification image is required before shipping. Missing for product ${pendingVerificationItem.productId}.`,
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+      }
+
       order.status = input.status;
       order.updatedAt = new Date().toISOString();
       if (input.status === 'delivered') {
         order.deliveredAt = new Date().toISOString();
+      }
+
+      let rtoCharges = [];
+      if (input.status === 'rto') {
+        rtoCharges = createRtoCharges(db, order, input.rtoReason, req.auth.sub);
       }
 
       if (!Array.isArray(order.statusHistory)) {
@@ -420,6 +620,7 @@ router.patch('/:orderId/status', requireRoles('seller', 'admin'), async (req, re
         status: input.status,
         actorUserId: req.auth.sub,
         note: input.note || null,
+        rtoReason: input.rtoReason || null,
         createdAt: new Date().toISOString(),
       });
 
@@ -430,6 +631,12 @@ router.patch('/:orderId/status', requireRoles('seller', 'admin'), async (req, re
         entityId: order.id,
         metadata: {
           status: input.status,
+          rtoReason: input.rtoReason || null,
+          rtoCharges: rtoCharges.map((entry) => ({
+            id: entry.id,
+            sellerId: entry.sellerId,
+            totalChargeRs: entry.totalChargeRs,
+          })),
         },
       });
 

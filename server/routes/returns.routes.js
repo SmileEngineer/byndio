@@ -41,6 +41,7 @@ const statusTransitions = {
   refund_completed: [],
   rejected: [],
 };
+const sellerAllowedStatus = new Set(['pickup_scheduled', 'picked_up', 'seller_verified', 'rejected']);
 
 const router = Router();
 router.use(requireAuth);
@@ -76,6 +77,12 @@ router.post('/request', async (req, res) => {
         throw error;
       }
 
+      if (!['delivered', 'return_requested'].includes(order.status)) {
+        const error = new Error('Return can be requested only after the order is delivered.');
+        error.statusCode = 400;
+        throw error;
+      }
+
       const product = (db.products || []).find((entry) => entry.id === input.productId);
       if (!product) {
         const error = new Error('Product not found.');
@@ -96,7 +103,7 @@ router.post('/request', async (req, res) => {
         throw error;
       }
 
-      const deliveredAt = order.deliveredAt || order.createdAt;
+      const deliveredAt = order.deliveredAt || order.updatedAt || order.createdAt;
       const daysSinceDelivery =
         (Date.now() - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24);
       if (daysSinceDelivery > RETURN_WINDOW_DAYS) {
@@ -206,6 +213,12 @@ router.patch('/:returnId/status', requireRoles('seller', 'admin'), async (req, r
         throw error;
       }
 
+      if (req.auth.role !== 'admin' && !sellerAllowedStatus.has(input.status)) {
+        const error = new Error('Seller cannot perform this return/refund status transition.');
+        error.statusCode = 403;
+        throw error;
+      }
+
       const nextStates = statusTransitions[returnRequest.status] || [];
       if (!nextStates.includes(input.status)) {
         const error = new Error(
@@ -223,9 +236,9 @@ router.patch('/:returnId/status', requireRoles('seller', 'admin'), async (req, r
       addReturnTimeline(returnRequest, input.status, input.note, req.auth.sub);
 
       const order = (db.orders || []).find((entry) => entry.id === returnRequest.orderId);
+      let refund = (db.refunds || []).find((entry) => entry.returnRequestId === returnRequest.id);
 
-      if (input.status === 'approved' || input.status === 'refund_initiated') {
-        let refund = (db.refunds || []).find((entry) => entry.returnRequestId === returnRequest.id);
+      if (input.status === 'approved') {
         if (!refund) {
           const amountRs = order ? resolveReturnAmount(order, returnRequest.productId) : 0;
           refund = {
@@ -236,21 +249,31 @@ router.patch('/:returnId/status', requireRoles('seller', 'admin'), async (req, r
             productId: returnRequest.productId,
             amountRs,
             destination: input.refundDestination || 'source_payment_method',
-            status: 'initiated',
+            status: 'approved_pending_initiation',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             completedAt: null,
           };
           db.refunds.push(refund);
         } else {
-          refund.status = 'initiated';
+          refund.status = 'approved_pending_initiation';
+          refund.destination = input.refundDestination || refund.destination || 'source_payment_method';
           refund.updatedAt = new Date().toISOString();
         }
-        returnRequest.status = 'refund_initiated';
+      }
+
+      if (input.status === 'refund_initiated') {
+        if (!refund) {
+          const error = new Error('Return must be approved before initiating refund.');
+          error.statusCode = 400;
+          throw error;
+        }
+        refund.status = 'initiated';
+        refund.destination = input.refundDestination || refund.destination || 'source_payment_method';
+        refund.updatedAt = new Date().toISOString();
       }
 
       if (input.status === 'refund_completed') {
-        const refund = (db.refunds || []).find((entry) => entry.returnRequestId === returnRequest.id);
         if (!refund) {
           const error = new Error('Refund record not found for this return request.');
           error.statusCode = 400;
@@ -263,7 +286,13 @@ router.patch('/:returnId/status', requireRoles('seller', 'admin'), async (req, r
       }
 
       if (order) {
-        order.status = returnRequest.status === 'rejected' ? 'delivered' : 'return_requested';
+        if (returnRequest.status === 'rejected') {
+          order.status = 'delivered';
+        } else if (returnRequest.status === 'refund_completed') {
+          order.status = 'returned_refunded';
+        } else {
+          order.status = 'return_requested';
+        }
       }
 
       addAuditLog(db, {
@@ -278,8 +307,7 @@ router.patch('/:returnId/status', requireRoles('seller', 'admin'), async (req, r
 
       return {
         returnRequest,
-        refund:
-          (db.refunds || []).find((entry) => entry.returnRequestId === returnRequest.id) || null,
+        refund: (db.refunds || []).find((entry) => entry.returnRequestId === returnRequest.id) || null,
       };
     });
 

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { createInitialState } from './data/initialState.js';
 import { migrateDb } from './data/migrate.js';
+import { runPointsExpiryJob } from './jobs.js';
 
 const dataDir = path.resolve(process.cwd(), 'server', 'data');
 const dbPath = path.resolve(dataDir, 'db.json');
@@ -11,6 +12,10 @@ const tempDbPath = path.resolve(dataDir, 'db.tmp.json');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DB_STATE_TABLE = process.env.DB_STATE_TABLE || 'byndio_app_state';
 const DB_STATE_KEY = process.env.DB_STATE_KEY || 'main';
+const POINTS_EXPIRY_INTERVAL_HOURS = Math.max(
+  1,
+  Number(process.env.POINTS_EXPIRY_JOB_INTERVAL_HOURS || 24),
+);
 
 const usePostgres = Boolean(DATABASE_URL);
 
@@ -37,6 +42,21 @@ function getPgPool() {
 
 function stateTableSql() {
   return `"${DB_STATE_TABLE.replace(/"/g, '""')}"`;
+}
+
+function shouldRunPointsExpiry(db) {
+  const lastRunAt = db?.jobs?.lastPointsExpiryRunAt;
+  if (!lastRunAt) {
+    return true;
+  }
+
+  const lastRunTs = new Date(lastRunAt).getTime();
+  if (!Number.isFinite(lastRunTs)) {
+    return true;
+  }
+
+  const intervalMs = POINTS_EXPIRY_INTERVAL_HOURS * 60 * 60 * 1000;
+  return Date.now() - lastRunTs >= intervalMs;
 }
 
 async function ensurePostgresState() {
@@ -126,7 +146,14 @@ async function writeDbPostgres(db) {
 }
 
 async function withMigratedState(rawDb, writer) {
-  const { db, changed } = migrateDb(rawDb);
+  const { db, changed: migrated } = migrateDb(rawDb);
+  let changed = migrated;
+
+  if (shouldRunPointsExpiry(db)) {
+    runPointsExpiryJob(db);
+    changed = true;
+  }
+
   if (changed) {
     await writer(db);
   }
@@ -168,6 +195,9 @@ async function updateDbPostgres(mutator) {
     let db = result.rowCount === 0 ? createInitialState() : result.rows[0].data;
     const migrated = migrateDb(db);
     db = migrated.db;
+    if (shouldRunPointsExpiry(db)) {
+      runPointsExpiryJob(db);
+    }
 
     const mutatorResult = await mutator(db);
     await client.query(
@@ -197,7 +227,7 @@ async function updateDbFile(mutator) {
 }
 
 export async function updateDb(mutator) {
-  queue = queue.then(async () => {
+  const run = queue.catch(() => undefined).then(async () => {
     if (usePostgres) {
       return updateDbPostgres(mutator);
     }
@@ -205,7 +235,8 @@ export async function updateDb(mutator) {
     return updateDbFile(mutator);
   });
 
-  return queue;
+  queue = run.catch(() => undefined);
+  return run;
 }
 
 export { dbPath, usePostgres };

@@ -18,6 +18,7 @@ const draftOnboardingSchema = z.object({
   city: z.string().trim().min(2).max(80).optional(),
   pincode: z.string().trim().min(4).max(10).optional(),
   annualTurnoverLakh: z.number().nonnegative().max(10000).optional(),
+  withoutGstDeclarationAccepted: z.boolean().optional(),
   legalDeclarationAccepted: z.boolean().optional(),
   responsibilitiesAccepted: z.boolean().optional(),
   supportChannel: z.enum(['chat', 'email', 'whatsapp']).optional(),
@@ -33,6 +34,7 @@ const submitOnboardingSchema = z.object({
   city: z.string().trim().min(2).max(80),
   pincode: z.string().trim().min(4).max(10),
   annualTurnoverLakh: z.number().nonnegative().max(10000),
+  withoutGstDeclarationAccepted: z.boolean().optional(),
   legalDeclarationAccepted: z.boolean(),
   responsibilitiesAccepted: z.boolean(),
   supportChannel: z.enum(['chat', 'email', 'whatsapp']),
@@ -49,6 +51,10 @@ const router = Router();
 router.use(requireAuth, requireRoles('seller', 'admin'));
 
 function validateSubmitPayload(input) {
+  const withoutGstDeclarationAccepted = input.hasGST
+    ? true
+    : Boolean(input.withoutGstDeclarationAccepted ?? input.legalDeclarationAccepted);
+
   if (!input.hasGST && input.sellAllIndia) {
     const error = new Error('Without GST you can only sell within your state.');
     error.statusCode = 400;
@@ -72,6 +78,14 @@ function validateSubmitPayload(input) {
   if (!input.hasGST && input.annualTurnoverLakh >= 40) {
     const error = new Error(
       'Annual turnover at or above Rs 40 lakh requires GST registration to continue selling.',
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!input.hasGST && !withoutGstDeclarationAccepted) {
+    const error = new Error(
+      'Without GST, seller must confirm turnover below Rs 40 lakh and state-only selling declaration.',
     );
     error.statusCode = 400;
     throw error;
@@ -290,10 +304,15 @@ router.get('/dashboard', async (req, res) => {
       return sum + sellerLineTotal;
     }, 0);
 
-    const rtoOrders = sellerOrders.filter((order) =>
-      ['rto', 'return_requested'].includes(order.status),
-    ).length;
+    const rtoOrders = sellerOrders.filter((order) => order.status === 'rto').length;
     const rtoRiskMeter = calculateRtoRisk(rtoOrders, sellerOrders.length);
+    const sellerRtoCharges = (db.rtoCharges || []).filter((entry) => entry.sellerId === req.auth.sub);
+    const rtoChargesDueRs = sellerRtoCharges
+      .filter((entry) => entry.status !== 'settled')
+      .reduce((sum, entry) => sum + Number(entry.totalChargeRs || 0), 0);
+    const rtoChargesSettledRs = sellerRtoCharges
+      .filter((entry) => entry.status === 'settled')
+      .reduce((sum, entry) => sum + Number(entry.totalChargeRs || 0), 0);
 
     const onboarding = db.sellerOnboarding.find((entry) => entry.userId === req.auth.sub) || null;
 
@@ -303,8 +322,17 @@ router.get('/dashboard', async (req, res) => {
         orders: sellerOrders.length,
         revenue,
         rtoOrders,
+        rtoChargesDueRs,
       },
       rtoRiskMeter,
+      rtoCharges: {
+        total: sellerRtoCharges.length,
+        dueRs: rtoChargesDueRs,
+        settledRs: rtoChargesSettledRs,
+        recent: sellerRtoCharges
+          .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+          .slice(0, 5),
+      },
       onboardingSummary: onboarding
         ? {
             status: onboarding.status || 'submitted',

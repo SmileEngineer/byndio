@@ -155,6 +155,7 @@ export function migrateDb(rawDb) {
   changed = ensureArray(db, 'fraudFlags', []) || changed;
   changed = ensureArray(db, 'auditLogs', []) || changed;
   changed = ensureArray(db, 'orders', []) || changed;
+  changed = ensureArray(db, 'rtoCharges', []) || changed;
   changed = ensureArray(db, 'returnRequests', []) || changed;
   changed = ensureArray(db, 'refunds', []) || changed;
   changed = ensureJobsShape(db) || changed;
@@ -239,6 +240,28 @@ export function migrateDb(rawDb) {
 
     if (referral.status === undefined) {
       referral.status = referral.signupRewardedAt ? 'active' : 'pending_email_verification';
+      changed = true;
+    }
+  }
+
+  for (const onboarding of db.sellerOnboarding || []) {
+    if (!onboarding || typeof onboarding !== 'object') {
+      continue;
+    }
+
+    if (onboarding.withoutGstDeclarationAccepted === undefined) {
+      onboarding.withoutGstDeclarationAccepted = Boolean(onboarding.legalDeclarationAccepted);
+      changed = true;
+    }
+  }
+
+  for (const intent of db.paymentIntents || []) {
+    if (!intent || typeof intent !== 'object') {
+      continue;
+    }
+
+    if (intent.linkedTrainingSubscriptionId === undefined) {
+      intent.linkedTrainingSubscriptionId = null;
       changed = true;
     }
   }

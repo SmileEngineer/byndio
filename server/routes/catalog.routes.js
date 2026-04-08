@@ -5,6 +5,7 @@ import { readDb, updateDb } from '../db.js';
 import { parseBody, sendError } from '../http.js';
 import { addAuditLog } from '../audit.js';
 import { runDropSchedulerJob, runOfferActivationJob } from '../jobs.js';
+import { listLocationIndex } from '../location.js';
 
 const createProductSchema = z.object({
   name: z.string().min(2).max(180),
@@ -28,6 +29,9 @@ const createProductSchema = z.object({
 });
 
 const router = Router();
+const locationIndex = listLocationIndex();
+const cityToState = new Map(locationIndex.map((entry) => [entry.city.toLowerCase(), entry.state.toLowerCase()]));
+const pincodeToState = new Map(locationIndex.map((entry) => [String(entry.pincode), entry.state.toLowerCase()]));
 
 function applySort(products, sort) {
   const list = [...products];
@@ -271,6 +275,67 @@ router.post('/products', requireAuth, requireRoles('seller', 'admin'), async (re
         const error = new Error('Invalid category. Create category first from admin panel.');
         error.statusCode = 400;
         throw error;
+      }
+
+      if (req.auth.role !== 'admin') {
+        const onboarding = (db.sellerOnboarding || []).find(
+          (entry) => entry.userId === req.auth.sub && entry.status === 'submitted',
+        );
+
+        if (!onboarding) {
+          const error = new Error('Complete seller onboarding before adding products.');
+          error.statusCode = 400;
+          throw error;
+        }
+
+        if (!onboarding.sellAllIndia) {
+          const sellerState = String(onboarding.state || '').toLowerCase();
+          const unsupportedServiceCity = input.serviceCities.find(
+            (city) => !cityToState.has(String(city).toLowerCase()),
+          );
+          if (unsupportedServiceCity) {
+            const error = new Error(
+              `Unsupported city for seller service mapping: ${unsupportedServiceCity}.`,
+            );
+            error.statusCode = 400;
+            throw error;
+          }
+
+          const invalidServiceCity = input.serviceCities.find((city) => {
+            const mappedState = cityToState.get(String(city).toLowerCase());
+            return mappedState !== sellerState;
+          });
+          if (invalidServiceCity) {
+            const error = new Error(
+              `Seller is restricted to ${onboarding.state} service region. Invalid city: ${invalidServiceCity}.`,
+            );
+            error.statusCode = 400;
+            throw error;
+          }
+
+          const unsupportedServicePincode = input.servicePincodes.find(
+            (pincode) => !pincodeToState.has(String(pincode)),
+          );
+          if (unsupportedServicePincode) {
+            const error = new Error(
+              `Unsupported pincode for seller service mapping: ${unsupportedServicePincode}.`,
+            );
+            error.statusCode = 400;
+            throw error;
+          }
+
+          const invalidServicePincode = input.servicePincodes.find((pincode) => {
+            const mappedState = pincodeToState.get(String(pincode));
+            return mappedState !== sellerState;
+          });
+          if (invalidServicePincode) {
+            const error = new Error(
+              `Seller is restricted to ${onboarding.state} service region. Invalid pincode: ${invalidServicePincode}.`,
+            );
+            error.statusCode = 400;
+            throw error;
+          }
+        }
       }
 
       const product = {
