@@ -18,11 +18,40 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().trim().min(3).max(120).optional(),
+  email: z.string().trim().min(3).max(120).optional(),
   password: z.string().min(1),
 });
 
 const router = Router();
+
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function resolveLoginIdentifier(input) {
+  return String(input.identifier || input.email || '').trim();
+}
+
+function findUserByIdentifier(db, identifier) {
+  const normalizedIdentifier = String(identifier || '').trim();
+  if (!normalizedIdentifier) {
+    return null;
+  }
+
+  if (normalizedIdentifier.includes('@')) {
+    return db.users.find(
+      (candidate) => candidate.email.toLowerCase() === normalizedIdentifier.toLowerCase(),
+    );
+  }
+
+  const phone = normalizePhone(normalizedIdentifier);
+  if (!phone) {
+    return null;
+  }
+
+  return db.users.find((candidate) => normalizePhone(candidate.phone) === phone);
+}
 
 function makeReferralCode(db, seedName) {
   const seed = seedName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4) || 'BYN';
@@ -76,6 +105,18 @@ router.post('/register', async (req, res) => {
         throw error;
       }
 
+      const normalizedPhone = normalizePhone(input.phone);
+      if (normalizedPhone) {
+        const existingPhone = db.users.find(
+          (user) => normalizePhone(user.phone) === normalizedPhone,
+        );
+        if (existingPhone) {
+          const error = new Error('Phone number already registered.');
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+
       if (input.deviceId) {
         const existingDeviceUser = db.users.find((user) => user.deviceId === input.deviceId);
         if (existingDeviceUser) {
@@ -120,7 +161,7 @@ router.post('/register', async (req, res) => {
         id: crypto.randomUUID(),
         name: input.name.trim(),
         email: input.email.toLowerCase(),
-        phone: input.phone || '',
+        phone: normalizedPhone || '',
         role: input.role,
         passwordHash,
         referralCode: makeReferralCode(db, input.name),
@@ -223,8 +264,14 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const input = parseBody(loginSchema, req.body);
+    const identifier = resolveLoginIdentifier(input);
+    if (!identifier) {
+      const error = new Error('Email or phone is required.');
+      error.statusCode = 400;
+      throw error;
+    }
     const db = await readDb();
-    const user = db.users.find((candidate) => candidate.email.toLowerCase() === input.email.toLowerCase());
+    const user = findUserByIdentifier(db, identifier);
 
     if (!user) {
       const error = new Error('Invalid email or password.');

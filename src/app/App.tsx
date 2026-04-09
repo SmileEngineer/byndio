@@ -17,6 +17,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { LocationSheet } from './components/LocationSheet';
 import { ProductListing } from './components/ProductListing';
 import { Button } from './components/ui/button';
+import type { AuthResponse } from './api';
 import {
   circleCategories,
   defaultLocation,
@@ -27,6 +28,8 @@ import {
   vibeCards,
 } from './mockData';
 import type { HomeCollection, LocationInfo, PopupType, Product, View } from './types';
+
+const AUTH_STORAGE_KEY = 'byndio.auth.session';
 
 function isServiceable(product: Product, location: LocationInfo) {
   if (!product.serviceZones || product.serviceZones.length === 0) {
@@ -46,6 +49,14 @@ function filterByLocation(products: Product[], location: LocationInfo) {
 }
 
 export default function App() {
+  const [authSession, setAuthSession] = useState<AuthResponse | null>(() => {
+    try {
+      const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as AuthResponse) : null;
+    } catch {
+      return null;
+    }
+  });
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [location, setLocation] = useState<LocationInfo>(defaultLocation);
@@ -72,6 +83,18 @@ export default function App() {
 
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    try {
+      if (authSession) {
+        window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authSession));
+      } else {
+        window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+    } catch {
+      // ignore storage errors in private mode
+    }
+  }, [authSession]);
 
   useEffect(() => {
     const handleMouseLeave = (event: MouseEvent) => {
@@ -346,7 +369,8 @@ export default function App() {
       {currentView === 'login' ? (
         <LoginSignup
           onClose={() => setCurrentView('home')}
-          onLogin={() => {
+          onLogin={(session) => {
+            setAuthSession(session);
             setCurrentView('home');
             setPopupType('firstPurchase');
           }}

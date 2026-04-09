@@ -41,7 +41,13 @@ API_PORT=4000
 JWT_SECRET=replace_with_long_random_secret
 JWT_EXPIRES_IN=7d
 DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require&channel_binding=require
+VITE_API_BASE_URL=http://localhost:4000/api
 ```
+
+`VITE_API_BASE_URL` is used by frontend login/signup API calls.  
+If omitted, frontend defaults to:
+- `http://localhost:4000/api` on localhost
+- `/api` on non-local hosts
 
 Optional DB tuning:
 

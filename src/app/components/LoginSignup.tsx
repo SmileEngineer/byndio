@@ -1,22 +1,26 @@
 import { useState } from 'react';
-import { X, Mail, Lock, User, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { BrandLogo } from './BrandLogo';
+import { login, signup, type AuthResponse } from '../api';
 
 interface LoginSignupProps {
   onClose: () => void;
-  onLogin: () => void;
+  onLogin: (session: AuthResponse) => void;
 }
 
 export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [signupError, setSignupError] = useState('');
 
   const [loginData, setLoginData] = useState({
-    email: '',
+    identifier: '',
     password: ''
   });
 
@@ -28,14 +32,82 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
     confirmPassword: ''
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const normalizePhone = (value: string) => value.replace(/\D/g, '');
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin();
+    setLoginError('');
+    setSignupError('');
+    setIsSubmitting(true);
+
+    try {
+      const identifier = loginData.identifier.trim();
+      const password = loginData.password;
+      if (!identifier || !password) {
+        setLoginError('Email/phone and password are required.');
+        return;
+      }
+
+      const session = await login({
+        identifier,
+        password,
+      });
+      onLogin(session);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed.';
+      setLoginError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin();
+    setSignupError('');
+    setLoginError('');
+    setIsSubmitting(true);
+
+    try {
+      const name = signupData.name.trim();
+      const email = signupData.email.trim().toLowerCase();
+      const phone = normalizePhone(signupData.phone);
+      const password = signupData.password;
+      const confirmPassword = signupData.confirmPassword;
+
+      if (!name || !email || !phone || !password || !confirmPassword) {
+        setSignupError('All signup fields are required.');
+        return;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setSignupError('Enter a valid email address.');
+        return;
+      }
+
+      if (phone.length < 6) {
+        setSignupError('Enter a valid phone number.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setSignupError('Passwords do not match.');
+        return;
+      }
+
+      const session = await signup({
+        name,
+        email,
+        phone,
+        password,
+        role: 'buyer',
+      });
+      onLogin(session);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Signup failed.';
+      setSignupError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -82,8 +154,8 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
                       id="login-email"
                       type="text"
                       placeholder="Enter email or phone number"
-                      value={loginData.email}
-                      onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                      value={loginData.identifier}
+                      onChange={(e) => setLoginData({ ...loginData, identifier: e.target.value })}
                       className="pl-10"
                       required
                     />
@@ -124,8 +196,10 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
                 </div>
 
                 <Button type="submit" className="w-full" size="lg">
-                  Login
+                  {isSubmitting ? 'Logging in...' : 'Login'}
                 </Button>
+
+                {loginError ? <p className="text-sm text-red-600">{loginError}</p> : null}
 
                 <div className="relative my-6">
                   <div className="absolute inset-0 flex items-center">
@@ -272,8 +346,10 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
                 </div>
 
                 <Button type="submit" className="w-full" size="lg">
-                  Create Account
+                  {isSubmitting ? 'Creating account...' : 'Create Account'}
                 </Button>
+
+                {signupError ? <p className="text-sm text-red-600">{signupError}</p> : null}
 
                 <p className="text-xs text-center text-muted-foreground">
                   By signing up, you agree to our{' '}
