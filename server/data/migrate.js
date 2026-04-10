@@ -215,6 +215,11 @@ export function migrateDb(rawDb) {
       user.deviceId = null;
       changed = true;
     }
+
+    if (user.googleSub === undefined) {
+      user.googleSub = null;
+      changed = true;
+    }
   }
 
   for (const product of db.products) {

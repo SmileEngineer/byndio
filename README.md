@@ -40,14 +40,20 @@ NODE_ENV=production
 API_PORT=4000
 JWT_SECRET=replace_with_long_random_secret
 JWT_EXPIRES_IN=7d
+GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
 DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require&channel_binding=require
 VITE_API_BASE_URL=http://localhost:4000/api
+VITE_GOOGLE_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.com
 ```
 
-`VITE_API_BASE_URL` is used by frontend login/signup API calls.  
+`VITE_API_BASE_URL` is used by frontend API calls.  
 If omitted, frontend defaults to:
 - `http://localhost:4000/api` on localhost
 - `/api` on non-local hosts
+
+Google auth requires matching client IDs:
+- `GOOGLE_CLIENT_ID` on backend
+- `VITE_GOOGLE_CLIENT_ID` on frontend
 
 Optional DB tuning:
 
@@ -89,6 +95,13 @@ Optional DB tuning:
 - `POST /verification/otp/request`
 - `POST /verification/otp/verify`
 - `GET /verification/otp/history`
+
+### Auth Endpoints
+
+- `POST /auth/register` (requires `confirmPassword`)
+- `POST /auth/login` (`identifier` supports email or phone)
+- `POST /auth/google` (Google `idToken` verification + login/signup)
+- `GET /auth/me` (bearer token required)
 
 ### 5) Payments + Checkout
 

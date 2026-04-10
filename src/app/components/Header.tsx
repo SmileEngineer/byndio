@@ -8,14 +8,20 @@ interface HeaderProps {
   location: LocationInfo;
   onLocationClick: () => void;
   onLoginClick: () => void;
+  onLogoutClick: () => void;
   onRewardsClick: () => void;
+  isAuthenticated: boolean;
+  userName?: string;
 }
 
 export function Header({
   location,
   onLocationClick,
   onLoginClick,
+  onLogoutClick,
   onRewardsClick,
+  isAuthenticated,
+  userName,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-white/95 shadow-sm backdrop-blur">
@@ -53,10 +59,22 @@ export function Header({
           <Button variant="ghost" size="sm" onClick={onRewardsClick}>
             Rewards
           </Button>
-          <Button variant="ghost" size="sm" onClick={onLoginClick} className="gap-2">
-            <User className="h-4 w-4" />
-            Login
-          </Button>
+          {isAuthenticated ? (
+            <>
+              <Button variant="ghost" size="sm" className="gap-2">
+                <User className="h-4 w-4" />
+                {userName || 'Account'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={onLogoutClick}>
+                Logout
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={onLoginClick} className="gap-2">
+              <User className="h-4 w-4" />
+              Login
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="relative">
             <ShoppingCart className="h-5 w-5" />
             <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] text-white">

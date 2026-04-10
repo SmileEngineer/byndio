@@ -1,11 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { BrandLogo } from './BrandLogo';
-import { login, signup, type AuthResponse } from '../api';
+import { googleAuth, login, signup, type AuthResponse } from '../api';
+
+type GoogleCredentialResponse = {
+  credential?: string;
+};
+
+type GoogleIdentityApi = {
+  accounts: {
+    id: {
+      initialize: (config: {
+        client_id: string;
+        callback: (response: GoogleCredentialResponse) => void;
+      }) => void;
+      prompt: () => void;
+    };
+  };
+};
+
+declare global {
+  interface Window {
+    google?: GoogleIdentityApi;
+  }
+}
 
 interface LoginSignupProps {
   onClose: () => void;
@@ -13,9 +35,13 @@ interface LoginSignupProps {
 }
 
 export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
+  const googleClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  const googleInitRef = useRef(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleReady, setIsGoogleReady] = useState(false);
+  const [googleError, setGoogleError] = useState('');
   const [loginError, setLoginError] = useState('');
   const [signupError, setSignupError] = useState('');
 
@@ -34,10 +60,118 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
 
   const normalizePhone = (value: string) => value.replace(/\D/g, '');
 
+  useEffect(() => {
+    if (!googleClientId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const initializeGoogle = () => {
+      if (cancelled || googleInitRef.current || !window.google?.accounts?.id) {
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (response) => {
+          const idToken = String(response?.credential || '').trim();
+          if (!idToken) {
+            const message = 'Google authentication failed. Please try again.';
+            setGoogleError(message);
+            setLoginError(message);
+            setSignupError(message);
+            return;
+          }
+
+          setIsSubmitting(true);
+          setGoogleError('');
+          setLoginError('');
+          setSignupError('');
+
+          try {
+            const session = await googleAuth({
+              idToken,
+              role: 'buyer',
+            });
+            onLogin(session);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Google login failed.';
+            setGoogleError(message);
+            setLoginError(message);
+            setSignupError(message);
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+      });
+
+      googleInitRef.current = true;
+      setIsGoogleReady(true);
+    };
+
+    if (window.google?.accounts?.id) {
+      initializeGoogle();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const existingScript = document.querySelector('script[data-google-gsi="true"]');
+    if (existingScript) {
+      existingScript.addEventListener('load', initializeGoogle, { once: true });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleGsi = 'true';
+    script.onload = initializeGoogle;
+    script.onerror = () => {
+      if (!cancelled) {
+        setGoogleError('Unable to load Google sign-in.');
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleClientId, onLogin]);
+
+  const handleGoogleLogin = () => {
+    setGoogleError('');
+    setLoginError('');
+    setSignupError('');
+
+    if (!googleClientId) {
+      const message = 'Google sign-in is not configured.';
+      setGoogleError(message);
+      setLoginError(message);
+      setSignupError(message);
+      return;
+    }
+
+    if (!isGoogleReady || !window.google?.accounts?.id) {
+      const message = 'Google sign-in is still loading. Please try again.';
+      setGoogleError(message);
+      setLoginError(message);
+      setSignupError(message);
+      return;
+    }
+
+    window.google.accounts.id.prompt();
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     setSignupError('');
+    setGoogleError('');
     setIsSubmitting(true);
 
     try {
@@ -99,6 +233,7 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
         email,
         phone,
         password,
+        confirmPassword,
         role: 'buyer',
       });
       onLogin(session);
@@ -211,7 +346,7 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <Button type="button" variant="outline" onClick={() => alert('Google login')}>
+                  <Button type="button" variant="outline" onClick={handleGoogleLogin} disabled={isSubmitting}>
                     <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                       <path
                         fill="currentColor"
@@ -237,6 +372,8 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
                     OTP
                   </Button>
                 </div>
+
+                {googleError ? <p className="text-sm text-red-600">{googleError}</p> : null}
               </form>
             </TabsContent>
 
@@ -349,7 +486,18 @@ export function LoginSignup({ onClose, onLogin }: LoginSignupProps) {
                   {isSubmitting ? 'Creating account...' : 'Create Account'}
                 </Button>
 
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleGoogleLogin}
+                  disabled={isSubmitting}
+                >
+                  Continue with Google
+                </Button>
+
                 {signupError ? <p className="text-sm text-red-600">{signupError}</p> : null}
+                {googleError ? <p className="text-sm text-red-600">{googleError}</p> : null}
 
                 <p className="text-xs text-center text-muted-foreground">
                   By signing up, you agree to our{' '}

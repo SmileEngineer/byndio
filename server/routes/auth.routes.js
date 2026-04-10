@@ -11,10 +11,19 @@ const registerSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email(),
   password: z.string().min(8).max(128),
-  phone: z.string().min(6).max(20).optional(),
+  confirmPassword: z.string().min(8).max(128),
+  phone: z.string().min(6).max(20),
   role: z.enum(['buyer', 'seller']).default('buyer'),
   referralCode: z.string().trim().toUpperCase().optional(),
   deviceId: z.string().trim().min(2).max(200).optional(),
+}).superRefine((data, ctx) => {
+  if (data.password !== data.confirmPassword) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['confirmPassword'],
+      message: 'Confirm password must match password.',
+    });
+  }
 });
 
 const loginSchema = z.object({
@@ -23,7 +32,13 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const googleAuthSchema = z.object({
+  idToken: z.string().trim().min(20),
+  role: z.enum(['buyer', 'seller']).default('buyer'),
+});
+
 const router = Router();
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 
 function normalizePhone(value) {
   return String(value || '').replace(/\D/g, '');
@@ -88,6 +103,59 @@ function grantReferralSignupRewards(db, referral) {
     type: 'referral_signup_referred',
     source: referral.referrerUserId,
   });
+}
+
+async function verifyGoogleIdToken(idToken) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const response = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+      {
+        signal: controller.signal,
+      },
+    );
+
+    if (!response.ok) {
+      const error = new Error('Invalid Google token.');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const payload = await response.json();
+    const aud = String(payload.aud || '');
+    const email = String(payload.email || '').toLowerCase();
+    const emailVerified = String(payload.email_verified || '').toLowerCase() === 'true';
+
+    if (!aud || aud !== GOOGLE_CLIENT_ID) {
+      const error = new Error('Google token audience mismatch.');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    if (!email || !emailVerified) {
+      const error = new Error('Google account email is not verified.');
+      error.statusCode = 401;
+      throw error;
+    }
+
+    return {
+      email,
+      name: String(payload.name || '').trim() || 'Google User',
+      sub: String(payload.sub || ''),
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      const timeoutError = new Error('Google token verification timed out.');
+      timeoutError.statusCode = 504;
+      throw timeoutError;
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 router.post('/register', async (req, res) => {
@@ -293,6 +361,82 @@ router.post('/login', async (req, res) => {
         points: getUserBalance(db, user.id),
       },
     });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.post('/google', async (req, res) => {
+  try {
+    if (!GOOGLE_CLIENT_ID) {
+      const error = new Error('Google authentication is not configured on server.');
+      error.statusCode = 500;
+      throw error;
+    }
+
+    const input = parseBody(googleAuthSchema, req.body);
+    const profile = await verifyGoogleIdToken(input.idToken);
+
+    const result = await updateDb(async (db) => {
+      let user = db.users.find(
+        (candidate) => candidate.email.toLowerCase() === profile.email.toLowerCase(),
+      );
+
+      const isNewUser = !user;
+      if (!user) {
+        user = {
+          id: crypto.randomUUID(),
+          name: profile.name,
+          email: profile.email,
+          phone: '',
+          role: input.role,
+          passwordHash: await hashPassword(crypto.randomBytes(32).toString('hex')),
+          referralCode: makeReferralCode(db, profile.name),
+          referredByCode: null,
+          profileCompletedRewarded: false,
+          lastDailyLoginRewardAt: null,
+          firstPurchaseCompletedAt: null,
+          emailVerified: true,
+          deviceId: null,
+          googleSub: profile.sub || null,
+          createdAt: new Date().toISOString(),
+        };
+        db.users.push(user);
+
+        grantPoints(db, {
+          userId: user.id,
+          points: 50,
+          type: 'signup_bonus',
+          source: 'google_register',
+        });
+      } else {
+        user.emailVerified = true;
+        if (!user.googleSub && profile.sub) {
+          user.googleSub = profile.sub;
+        }
+      }
+
+      addAuditLog(db, {
+        actorUserId: user.id,
+        action: isNewUser ? 'user_registered_google' : 'user_login_google',
+        entityType: 'user',
+        entityId: user.id,
+        metadata: {
+          role: user.role,
+          emailVerified: user.emailVerified,
+        },
+      });
+
+      return {
+        token: createToken(user),
+        user: sanitizeUser(user),
+        wallet: {
+          points: getUserBalance(db, user.id),
+        },
+      };
+    });
+
+    return res.json(result);
   } catch (error) {
     return sendError(res, error);
   }

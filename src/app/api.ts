@@ -1,3 +1,5 @@
+export const AUTH_STORAGE_KEY = 'byndio.auth.session';
+
 type LoginInput = {
   identifier: string;
   password: string;
@@ -6,8 +8,14 @@ type LoginInput = {
 type SignupInput = {
   name: string;
   email: string;
-  phone?: string;
+  phone: string;
   password: string;
+  confirmPassword: string;
+  role?: 'buyer' | 'seller';
+};
+
+type GoogleAuthInput = {
+  idToken: string;
   role?: 'buyer' | 'seller';
 };
 
@@ -19,6 +27,7 @@ export type AuthUser = {
   role: 'buyer' | 'seller' | 'admin';
   referralCode?: string;
   createdAt?: string;
+  emailVerified?: boolean;
 };
 
 export type AuthResponse = {
@@ -29,9 +38,15 @@ export type AuthResponse = {
   };
 };
 
+export type AuthSession = AuthResponse;
+
 type ApiError = Error & {
   statusCode?: number;
   details?: unknown;
+};
+
+type RequestOptions = {
+  auth?: boolean;
 };
 
 function resolveApiBase() {
@@ -52,13 +67,66 @@ function resolveApiBase() {
 
 const API_BASE = resolveApiBase();
 
-async function request<T>(path: string, init: RequestInit): Promise<T> {
+export function loadAuthSession(): AuthSession | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as AuthSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAuthSession(session: AuthSession | null) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (session) {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    } else {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  } catch {
+    // ignore local storage failures
+  }
+}
+
+export function clearAuthSession() {
+  saveAuthSession(null);
+}
+
+export function getAuthToken() {
+  return loadAuthSession()?.token || null;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit,
+  { auth = false }: RequestOptions = {},
+): Promise<T> {
+  const headers = new Headers(init.headers || {});
+  if (!headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
+
+  if (auth) {
+    const token = getAuthToken();
+    if (!token) {
+      const error = new Error('Authentication required.') as ApiError;
+      error.statusCode = 401;
+      throw error;
+    }
+    headers.set('authorization', `Bearer ${token}`);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      'content-type': 'application/json',
-      ...(init.headers || {}),
-    },
+    headers,
   });
 
   const payload = await response.json().catch(() => null);
@@ -90,7 +158,32 @@ export async function signup(input: SignupInput) {
       email: input.email,
       phone: input.phone,
       password: input.password,
+      confirmPassword: input.confirmPassword,
       role: input.role || 'buyer',
     }),
   });
+}
+
+export async function googleAuth(input: GoogleAuthInput) {
+  return request<AuthResponse>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({
+      idToken: input.idToken,
+      role: input.role || 'buyer',
+    }),
+  });
+}
+
+export async function getMe() {
+  return request<{ user: AuthUser; wallet?: { points: number } }>(
+    '/auth/me',
+    {
+      method: 'GET',
+    },
+    { auth: true },
+  );
+}
+
+export async function authRequest<T>(path: string, init: RequestInit) {
+  return request<T>(path, init, { auth: true });
 }

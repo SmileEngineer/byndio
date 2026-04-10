@@ -17,7 +17,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { LocationSheet } from './components/LocationSheet';
 import { ProductListing } from './components/ProductListing';
 import { Button } from './components/ui/button';
-import type { AuthResponse } from './api';
+import { clearAuthSession, getMe, loadAuthSession, saveAuthSession, type AuthResponse } from './api';
 import {
   circleCategories,
   defaultLocation,
@@ -28,8 +28,6 @@ import {
   vibeCards,
 } from './mockData';
 import type { HomeCollection, LocationInfo, PopupType, Product, View } from './types';
-
-const AUTH_STORAGE_KEY = 'byndio.auth.session';
 
 function isServiceable(product: Product, location: LocationInfo) {
   if (!product.serviceZones || product.serviceZones.length === 0) {
@@ -49,14 +47,7 @@ function filterByLocation(products: Product[], location: LocationInfo) {
 }
 
 export default function App() {
-  const [authSession, setAuthSession] = useState<AuthResponse | null>(() => {
-    try {
-      const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as AuthResponse) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [authSession, setAuthSession] = useState<AuthResponse | null>(() => loadAuthSession());
   const [currentView, setCurrentView] = useState<View>('home');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [location, setLocation] = useState<LocationInfo>(defaultLocation);
@@ -77,24 +68,59 @@ export default function App() {
   });
 
   useEffect(() => {
+    if (authSession) {
+      return;
+    }
+
     const timer = window.setTimeout(() => {
       setPopupType('signup');
     }, 1500);
 
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [authSession]);
 
   useEffect(() => {
-    try {
-      if (authSession) {
-        window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authSession));
-      } else {
-        window.localStorage.removeItem(AUTH_STORAGE_KEY);
-      }
-    } catch {
-      // ignore storage errors in private mode
-    }
+    saveAuthSession(authSession);
   }, [authSession]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function validateSession() {
+      if (!authSession?.token) {
+        return;
+      }
+
+      try {
+        const me = await getMe();
+        if (cancelled) {
+          return;
+        }
+
+        setAuthSession((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          return {
+            ...prev,
+            user: me.user,
+            wallet: me.wallet || prev.wallet,
+          };
+        });
+      } catch {
+        if (!cancelled) {
+          setAuthSession(null);
+          clearAuthSession();
+        }
+      }
+    }
+
+    validateSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authSession?.token]);
 
   useEffect(() => {
     const handleMouseLeave = (event: MouseEvent) => {
@@ -175,7 +201,13 @@ export default function App() {
         location={location}
         onLocationClick={() => setShowLocationSheet(true)}
         onLoginClick={() => setCurrentView('login')}
+        onLogoutClick={() => {
+          setAuthSession(null);
+          clearAuthSession();
+        }}
         onRewardsClick={() => setCurrentView('rewards')}
+        isAuthenticated={Boolean(authSession?.token)}
+        userName={authSession?.user?.name}
       />
 
       <CategoryTabs
